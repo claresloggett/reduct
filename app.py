@@ -8,29 +8,38 @@ import plotly.graph_objs as go
 import pandas as pd
 from sklearn.decomposition import PCA
 
+import argparse
+
+from ingest_data import parse_input
+
+# Parse command-line
+parser = argparse.ArgumentParser(description='App for visualising high-dimensional data')
+parser.add_argument('infile', help='CSV file of data to visualise')
+parser.add_argument('--separator', default=',', help='separator character in tabular input')
+parser.add_argument('--num-pcs', type=int, default='10', help='number of principal components to present')
+# max_PCs
+args = parser.parse_args()
+
 # read and parse data
-df = pd.read_csv('data/testdata.csv')
+data, sample_info, field_info = parse_input(args.infile, separator=args.separator)
+fields = list(data.columns)
+assert list(field_info.index) == fields
 
 # do PCA
-num_pcs = df.shape[1]
+num_pcs = min(args.num_pcs, data.shape[1])
 pca = PCA(num_pcs)
-transformed = pd.DataFrame(pca.fit_transform(df.as_matrix().transpose()))
+transformed = pd.DataFrame(pca.fit_transform(data.as_matrix().transpose()))
 pca_names = ["PCA{}".format(n) for n in range(1,num_pcs+1)]
 transformed.columns = pca_names
 
 pca_dropdown_values = [{'label':"{0} ({1:.3} of variance)".format(n,v), 'value':n}
                        for (n,v) in zip(pca_names,pca.explained_variance_ratio_)]
 
-fields = list(df.columns)
 
 app = dash.Dash()
 
 app.layout = html.Div(children=[
     html.H1(children='Data embedding'),
-
-    #html.Div(children='''
-    #    Dash: A web application framework for Python.
-    #'''),
 
     html.Label('X-axis'),
     dcc.Dropdown(
