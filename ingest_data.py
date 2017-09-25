@@ -2,8 +2,6 @@
 import pandas as pd
 
 # Not yet implemented:
-# - field info other than FieldType(ColumnType)
-# - doing anything with RowID
 # - Categoricals, at all
 # - auto-detection of type when there is no ColumnType row
 
@@ -46,28 +44,48 @@ def parse_input(infile, separator):
         assert len(columntype_row) == 1
         columntypes = df.loc[columntype_row,:].iloc[0]
 
+    # Check for RowID column
+    if 'RowID' in columntypes:
+        id_columns = df.columns[columntypes == 'RowID']
+        if len(id_columns) > 1:
+            raise ValueError("More than one RowID column found.")
+        id_column = id_columns[0]
+        sample_ids = list(df.loc[data_rows,id_column])
+        fieldinfo_ids = list(df.loc[fieldinfo_rows,id_column])
+    else:
+        sample_ids = ["sample{}".format(n+1) for n in range(len(data_rows))]
+        fieldinfo_ids = ["fieldinfo{}".format(n+1) for n in range(len(fieldinfo_rows))]
+
     # Extract data and metadata
 
-    # TODO: handle other column types
+    # TODO: handle categorical column types
     data_columns = df.columns[columntypes.isin(['Numeric'])]
 
     data = df.loc[data_rows, data_columns]
 
     field_info = pd.DataFrame(index=data_columns)
     field_info['FieldType'] = columntypes[data_columns]
+    for (fieldinfo_name, row_index) in zip(fieldinfo_ids, fieldinfo_rows):
+        field_info[fieldinfo_name] = df.loc[row_index, data_columns].transpose()
 
     sample_info = pd.DataFrame(index=data_rows)
     sampleinfo_columns = (columntypes == 'RowInfo')
     sample_info = df.loc[data_rows, sampleinfo_columns]
+
+    # Use sample IDs as index
+    data.index = sample_ids
+    sample_info.index = sample_ids
 
     if data.shape[0]==0:
         raise ValueError("No data rows found.")
     if data.shape[1]==0:
         raise ValueError("No data fields found.")
 
-    print("Data shape {}".format(data.shape))
+    print("Data shape {}, sample info shape {}, field info shape {}".format(data.shape,
+                                                                            sample_info.shape,
+                                                                            field_info.shape))
     print("Data fields: {}".format(','.join(data.columns)))
-    if sample_info is not None:
-        print("Sample info fields: {}".format(','.join(sample_info.columns)))
+    print("Sample info fields: {}".format(','.join(sample_info.columns)))
+    print("Field info fields: {}".format(','.join(field_info.columns)))
 
     return (data, sample_info, field_info)
