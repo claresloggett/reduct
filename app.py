@@ -11,6 +11,7 @@ from sklearn.decomposition import PCA
 import argparse
 
 from ingest_data import parse_input
+from transform_data import pca_transform
 
 # Parse command-line
 parser = argparse.ArgumentParser(description='App for visualising high-dimensional data')
@@ -26,15 +27,11 @@ fields = list(data.columns)
 assert list(field_info.index) == fields
 
 # do PCA
-num_pcs = min(args.num_pcs, data.shape[1])
-pca = PCA(num_pcs)
-transformed = pd.DataFrame(pca.fit_transform(data.as_matrix()), index=data.index)
-pca_names = ["PCA{}".format(n) for n in range(1,num_pcs+1)]
-transformed.columns = pca_names
+pca, transformed = pca_transform(data, field_info, max_pcs=args.num_pcs)
 print("PCA results shape {}".format(transformed.shape))
 
 pca_dropdown_values = [{'label':"{0} ({1:.3} of variance)".format(n,v), 'value':n}
-                       for (n,v) in zip(pca_names,pca.explained_variance_ratio_)]
+                       for (n,v) in zip(transformed.columns,pca.explained_variance_ratio_)]
 
 
 app = dash.Dash()
