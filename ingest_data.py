@@ -58,8 +58,8 @@ def parse_input(infile, separator):
 
     # Extract data and metadata
 
-    # TODO: handle categorical column types
-    data_columns = df.columns[columntypes.isin(['Numeric'])]
+    # TODO: handle categorical category specifications, and ordered categories
+    data_columns = df.columns[columntypes.isin(['Numeric', 'Categorical'])]
 
     data = df.loc[data_rows, data_columns]
 
