@@ -32,6 +32,8 @@ field_info_table = field_info
 field_info_table['Field'] = field_info_table.index
 
 app = dash.Dash()
+app.css.config.serve_locally = True
+app.scripts.config.serve_locally = True
 
 app.layout = html.Div(children=[
     #html.H1(children='Data embedding'),
@@ -83,7 +85,6 @@ def update_pca(selected_fields):
     Re-do the PCA based on included fields.
     Store in a hidden div.
     """
-    print("Updating PCA: "+str(selected_fields))
     pca, transformed = pca_transform(data.iloc[:,selected_fields],
                                      field_info.iloc[selected_fields,:],
                                      max_pcs=args.num_pcs)
@@ -97,10 +98,9 @@ def update_pca(selected_fields):
 )
 def update_pca_axes_y(transformed_data_json):
     """
-    When PCA has been updated, re-generate the lists of available X and Y axes;
-    this should trigger regeneration of the plot as well.
+    When PCA has been updated, re-generate the list of available Y-axes.
+
     """
-    print("Updating Y dropdown")
     stored_data = json.loads(transformed_data_json)
     transformed = pd.read_json(stored_data['transformed'], orient='split')
     variance_ratios = stored_data['variance_ratios']
@@ -114,10 +114,8 @@ def update_pca_axes_y(transformed_data_json):
 )
 def update_pca_axes_x(transformed_data_json):
     """
-    When PCA has been updated, re-generate the lists of available X and Y axes;
-    this should trigger regeneration of the plot as well.
+    When PCA has been updated, re-generate the list of available X-axes.
     """
-    print("Updating X dropdown")
     stored_data = json.loads(transformed_data_json)
     transformed = pd.read_json(stored_data['transformed'], orient='split')
     variance_ratios = stored_data['variance_ratios']
