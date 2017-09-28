@@ -34,6 +34,7 @@ field_info_table['Field'] = field_info_table.index
 app = dash.Dash()
 app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True
+app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
 
 app.layout = html.Div(children=[
     #html.H1(children='Data embedding'),
@@ -58,16 +59,19 @@ app.layout = html.Div(children=[
         value=False  # TODO: set default to True if any categorical fields?
     ),
 
-    html.Label('X-axis'),
-    dcc.Dropdown(
-        id='x_dropdown'
-        # options and value created by callback
-    ),
+    html.Div(id='axis_component_selectors',
+        children=[
+        html.Label('X-axis'),
+        dcc.Dropdown(
+            id='x_dropdown'
+            # options and value created by callback
+        ),
 
-    html.Label('Y-axis'),
-    dcc.Dropdown(
-        id='y_dropdown'
-        # options and value created by callback
+        html.Label('Y-axis'),
+        dcc.Dropdown(
+            id='y_dropdown'
+            # options and value created by callback
+        )]
     ),
 
     html.Label('Colour points by'),
@@ -103,55 +107,40 @@ def update_pca(selected_fields, scale):
                        'variance_ratios': list(pca.explained_variance_ratio_)})
 
 @app.callback(
-    Output('y_dropdown','options'),
-    [Input('hidden_data_div','children')]
+    Output('axis_component_selectors','children'),
+    [Input('hidden_data_div','children')],
+    state=[State('x_dropdown','value'), State('y_dropdown','value')]
 )
-def update_pca_axes_y(transformed_data_json):
+def update_pca_axes(transformed_data_json, previous_x, previous_y):
     """
-    When PCA has been updated, re-generate the list of available Y-axes.
-
+    When PCA has been updated, re-generate the lists of available axes.
     """
     stored_data = json.loads(transformed_data_json)
     transformed = pd.read_json(stored_data['transformed'], orient='split')
     variance_ratios = stored_data['variance_ratios']
     pca_dropdown_values = [{'label':"{0} ({1:.3} of variance)".format(n,v), 'value':n}
                            for (n,v) in zip(transformed.columns,variance_ratios)]
-    return pca_dropdown_values
+    # If old selected compontents not available,
+    # set x and y to PCA1 and PCA2 respectively
+    if previous_x not in transformed.columns:
+        previous_x = transformed.columns[0]
+    if previous_y not in transformed.columns:
+        previous_y = transformed.columns[1]
+    new_html = [
+        html.Label('X-axis'),
+        dcc.Dropdown(
+            id='x_dropdown',
+            options=pca_dropdown_values,
+            value=previous_x
+        ),
 
-@app.callback(
-    Output('x_dropdown','options'),
-    [Input('hidden_data_div','children')]
-)
-def update_pca_axes_x(transformed_data_json):
-    """
-    When PCA has been updated, re-generate the list of available X-axes.
-    """
-    stored_data = json.loads(transformed_data_json)
-    transformed = pd.read_json(stored_data['transformed'], orient='split')
-    variance_ratios = stored_data['variance_ratios']
-    pca_dropdown_values = [{'label':"{0} ({1:.3} of variance)".format(n,v), 'value':n}
-                           for (n,v) in zip(transformed.columns,variance_ratios)]
-    return pca_dropdown_values
-
-@app.callback(
-    dash.dependencies.Output('x_dropdown', 'value'),
-    [dash.dependencies.Input('x_dropdown', 'options')])
-def set_x_default_value(available_pcs):
-    """
-    When list of X-axes is updated, set default value.
-    This should trigger regeneration of the plot as well.
-    """
-    return available_pcs[0]['value']
-
-@app.callback(
-    dash.dependencies.Output('y_dropdown', 'value'),
-    [dash.dependencies.Input('y_dropdown', 'options')])
-def set_y_default_value(available_pcs):
-    """
-    When list of Y-axes is updated, set default value.
-    This should trigger regeneration of the plot as well.
-    """
-    return available_pcs[1]['value']
+        html.Label('Y-axis'),
+        dcc.Dropdown(
+            id='y_dropdown',
+            options=pca_dropdown_values,
+            value=previous_y
+        )]
+    return new_html
 
 @app.callback(
     Output('pca-plot','figure'),
@@ -182,7 +171,7 @@ def update_figure(x_field, y_field, colour_field, stored_data):
             'title': 'PCA',
             'xaxis': {'title': x_field},
             'yaxis': {'title': y_field},
-            'hovermode': 'closest'
+            'hovermode': 'closest',
         }
     }
     return figure
