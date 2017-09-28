@@ -23,15 +23,22 @@ def one_hot(series, categories=None):
     encoded.index = vec.index
     return encoded
 
-def pca_transform(data, field_info, max_pcs):
+def pca_transform(data, field_info, max_pcs, scale=False):
     """
     Apply PCA to the data.
     Return the pca object and the transformed data.
     """
-    # Encode any categorical fields, and concat results with numerical fields
-    # For now, handling only unordered categories
     numeric_fieldspec = field_info['FieldType']=='Numeric'
     categorical_fields = data.columns[field_info['FieldType']=='Categorical']
+
+    if scale:
+        # Subtracting mean should have no effect,
+        # dividing by std should
+        data.loc[:,numeric_fieldspec] -= data.loc[:,numeric_fieldspec].mean()
+        data.loc[:,numeric_fieldspec] /= data.loc[:,numeric_fieldspec].std()
+
+    # Encode any categorical fields, and concat results with numerical fields
+    # For now, handling only unordered categories
     encoded = pd.concat([data.loc[:,numeric_fieldspec]] +
                         [one_hot(data[field]) for field in categorical_fields],
                         axis=1)

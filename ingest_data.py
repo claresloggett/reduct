@@ -72,6 +72,11 @@ def parse_input(infile, separator):
     sampleinfo_columns = (columntypes == 'RowInfo')
     sample_info = df.loc[data_rows, sampleinfo_columns]
 
+    # Give numeric columns appropriate dtype
+    for field in field_info.index:
+        if field_info.loc[field,'FieldType']=='Numeric':
+            data[field] = pd.to_numeric(data[field])
+
     # Use sample IDs as index
     data.index = sample_ids
     sample_info.index = sample_ids

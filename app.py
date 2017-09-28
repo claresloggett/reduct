@@ -50,6 +50,14 @@ app.layout = html.Div(children=[
 
     html.Div(id='hidden_data_div', style={'display':'none'}),
 
+    html.Label('Scale numeric fields'),
+    dcc.RadioItems(
+        id='scale_selector',
+        options=[{'label':"Scale numeric fields to std=1", 'value':True},
+                 {'label':"Leave unscaled", 'value':False}],
+        value=False  # TODO: set default to True if any categorical fields?
+    ),
+
     html.Label('X-axis'),
     dcc.Dropdown(
         id='x_dropdown'
@@ -78,16 +86,18 @@ app.layout = html.Div(children=[
 
 @app.callback(
     Output('hidden_data_div', 'children'),
-    [Input('field_selector_table','selected_row_indices')]
+    [Input('field_selector_table','selected_row_indices'),
+    Input('scale_selector','value')]
 )
-def update_pca(selected_fields):
+def update_pca(selected_fields, scale):
     """
     Re-do the PCA based on included fields.
     Store in a hidden div.
     """
     pca, transformed = pca_transform(data.iloc[:,selected_fields],
                                      field_info.iloc[selected_fields,:],
-                                     max_pcs=args.num_pcs)
+                                     max_pcs=args.num_pcs,
+                                     scale=scale)
     print("PCA results shape {}".format(transformed.shape))
     return json.dumps({'transformed': transformed.to_json(orient='split'),
                        'variance_ratios': list(pca.explained_variance_ratio_)})
@@ -145,7 +155,8 @@ def set_y_default_value(available_pcs):
 
 @app.callback(
     Output('pca-plot','figure'),
-    [Input('x_dropdown','value'), Input('y_dropdown','value'), Input('colour_dropdown','value')],
+    [Input('x_dropdown','value'), Input('y_dropdown','value'),
+     Input('colour_dropdown','value')],
     state=[State('hidden_data_div', 'children')]
 )
 def update_figure(x_field, y_field, colour_field, stored_data):
