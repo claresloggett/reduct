@@ -1,14 +1,16 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State, Event
+
+import dash_table_experiments
 
 import plotly.graph_objs as go
 
+import argparse
+import json
 import pandas as pd
 from sklearn.decomposition import PCA
-
-import argparse
 
 from ingest_data import parse_input
 from transform_data import pca_transform
@@ -26,31 +28,36 @@ data, sample_info, field_info = parse_input(args.infile, separator=args.separato
 fields = list(data.columns)
 assert list(field_info.index) == fields
 
-# do PCA
-pca, transformed = pca_transform(data, field_info, max_pcs=args.num_pcs)
-print("PCA results shape {}".format(transformed.shape))
-
-pca_dropdown_values = [{'label':"{0} ({1:.3} of variance)".format(n,v), 'value':n}
-                       for (n,v) in zip(transformed.columns,pca.explained_variance_ratio_)]
-
+field_info_table = field_info
+field_info_table['Field'] = field_info_table.index
 
 app = dash.Dash()
 
 app.layout = html.Div(children=[
     #html.H1(children='Data embedding'),
 
+    html.Label('Include fields'),
+    dash_table_experiments.DataTable(
+        id='field_selector_table',
+        rows=field_info_table.to_dict('records'),
+        columns=['Field'] + [f for f in field_info_table.columns if f!='Field'], #put field first
+        row_selectable=True,
+        sortable=True,
+        selected_row_indices=list(range(len(field_info_table))) #by number, not df index
+    ),
+
+    dcc.Markdown(id='markdown_div'),
+
     html.Label('X-axis'),
     dcc.Dropdown(
-        id='x_dropdown',
-        options = pca_dropdown_values,
-        value='PCA1'
+        id='x_dropdown'
+        # options and value created by callback
     ),
 
     html.Label('Y-axis'),
     dcc.Dropdown(
-        id='y_dropdown',
-        options = pca_dropdown_values,
-        value='PCA2'
+        id='y_dropdown'
+        # options and value created by callback
     ),
 
     html.Label('Colour points by'),
@@ -67,10 +74,77 @@ app.layout = html.Div(children=[
 ])
 
 @app.callback(
-    Output('pca-plot','figure'),
-    [Input('x_dropdown','value'), Input('y_dropdown','value'), Input('colour_dropdown','value')]
+    Output('markdown_div', 'children'),
+    [Input('field_selector_table','selected_row_indices')]
 )
-def update_figure(x_field, y_field, colour_field):
+def update_pca(selected_fields):
+    """
+    Re-do the PCA based on included fields.
+    Store in a hidden div.
+    """
+    print("Updating PCA: "+str(selected_fields))
+    pca, transformed = pca_transform(data.iloc[:,selected_fields],
+                                     field_info.iloc[selected_fields,:],
+                                     max_pcs=args.num_pcs)
+    print("PCA results shape {}".format(transformed.shape))
+    return json.dumps({'transformed': transformed.to_json(),
+                       'variance_ratios': list(pca.explained_variance_ratio_)})
+
+@app.callback(
+    Output('y_dropdown','options'),
+    [Input('markdown_div','children')] #replace with hidden div
+)
+def update_pca_axes_y(transformed_data_json):
+    """
+    When PCA has been updated, re-generate the lists of available X and Y axes;
+    this should trigger regeneration of the plot as well.
+    """
+    print("Updating Y dropdown")
+    stored_data = json.loads(transformed_data_json)
+    transformed = pd.read_json(stored_data['transformed'])
+    variance_ratios = stored_data['variance_ratios']
+    pca_dropdown_values = [{'label':"{0} ({1:.3} of variance)".format(n,v), 'value':n}
+                           for (n,v) in zip(transformed.columns,variance_ratios)]
+    return pca_dropdown_values
+
+@app.callback(
+    Output('x_dropdown','options'),
+    [Input('markdown_div','children')] #replace with hidden div
+)
+def update_pca_axes_x(transformed_data_json):
+    """
+    When PCA has been updated, re-generate the lists of available X and Y axes;
+    this should trigger regeneration of the plot as well.
+    """
+    print("Updating X dropdown")
+    stored_data = json.loads(transformed_data_json)
+    transformed = pd.read_json(stored_data['transformed'])
+    variance_ratios = stored_data['variance_ratios']
+    pca_dropdown_values = [{'label':"{0} ({1:.3} of variance)".format(n,v), 'value':n}
+                           for (n,v) in zip(transformed.columns,variance_ratios)]
+    return pca_dropdown_values
+
+@app.callback(
+    dash.dependencies.Output('x_dropdown', 'value'),
+    [dash.dependencies.Input('x_dropdown', 'options')])
+def set_x_default_value(available_pcs):
+    return available_pcs[0]['value']
+
+@app.callback(
+    dash.dependencies.Output('y_dropdown', 'value'),
+    [dash.dependencies.Input('y_dropdown', 'options')])
+def set_y_default_value(available_pcs):
+    return available_pcs[1]['value']
+
+@app.callback(
+    Output('pca-plot','figure'),
+    [Input('x_dropdown','value'), Input('y_dropdown','value'), Input('colour_dropdown','value')],
+    state=[State('markdown_div', 'children')]
+)
+def update_figure(x_field, y_field, colour_field, stored_data):
+    # If storing transformed data this way, ought to memoise PCA calculation
+    print("Updating plot")
+    transformed = pd.read_json(json.loads(stored_data)['transformed'])
     if colour_field == 'None':
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
                   mode='markers', marker=dict(size=10),
