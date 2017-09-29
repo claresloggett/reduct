@@ -10,20 +10,26 @@ def fill_in_missing(data, field_info, sample_info):
     a dataset with no missing values.
     """
     # For now test simple methods: just fill in with zeroes and 'Unknown's
-    fields_with_missing = data.columns[data.isnull().sum() > 0]
+    data_missing = data.isnull().sum() > 0
+    numeric = field_info['FieldType']=='Numeric'
+    categorical = field_info['FieldType']=='Categorical'
+    numeric_fields = data.columns[data_missing & numeric]
+    categorical_fields = data.columns[data_missing & categorical]
 
-    for field in fields_with_missing:
+    for field in numeric_fields:
         print("Filling in missing values in "+field)
-        if field_info.loc[field,'FieldType']=='Numeric':
-            missing_values = data[field].isnull()
-            data.loc[missing_values,field] = 0
-        elif field_info.loc[field,'FieldType']=='Categorical':
-            missing_values = data[field].isnull()
-            new_value = 'Unknown'
-            while new_value in data[field].unique():
-                new_value = new_value + "_"
-            #new_values = ["Unknown{}".format(n+1) for n in range(missing_values.sum())]
-            data.loc[missing_values,field] = new_values
+        missing_values = data[field].isnull()
+        data.loc[missing_values,field] = 0
+
+    for field in categorical_fields:
+        print("Filling in missing values in "+field)
+        missing_values = data[field].isnull()
+        new_value = 'Unknown'
+        while new_value in data[field].unique():
+            new_value = new_value + "_"
+        #new_values = ["Unknown{}".format(n+1) for n in range(missing_values.sum())]
+        data.loc[missing_values,field] = new_value
+
     return data
 
 def one_hot(series, categories=None):
