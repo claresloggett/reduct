@@ -13,7 +13,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 from ingest_data import parse_input
-from transform_data import pca_transform
+from transform_data import fill_in_missing, pca_transform
 
 # Parse command-line
 parser = argparse.ArgumentParser(description='App for visualising high-dimensional data')
@@ -128,7 +128,8 @@ def update_pca(scale, selected_fields):
     if not args.show_fieldtable:
         assert selected_fields is None
         selected_fields = list(range(data.shape[1]))
-    pca, transformed = pca_transform(data.iloc[:,selected_fields],
+    data_completed = fill_in_missing(data, field_info, sample_info)
+    pca, transformed = pca_transform(data_completed.iloc[:,selected_fields],
                                      field_info.iloc[selected_fields,:],
                                      max_pcs=args.num_pcs,
                                      scale=scale)

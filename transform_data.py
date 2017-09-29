@@ -4,6 +4,28 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 
+def fill_in_missing(data, field_info, sample_info):
+    """
+    Fill in missing values, or delete rows/columns, to produce
+    a dataset with no missing values.
+    """
+    # For now test simple methods: just fill in with zeroes and 'Unknown's
+    fields_with_missing = data.columns[data.isnull().sum() > 0]
+
+    for field in fields_with_missing:
+        print("Filling in missing values in "+field)
+        if field_info.loc[field,'FieldType']=='Numeric':
+            missing_values = data[field].isnull()
+            data.loc[missing_values,field] = 0
+        elif field_info.loc[field,'FieldType']=='Categorical':
+            missing_values = data[field].isnull()
+            new_value = 'Unknown'
+            while new_value in data[field].unique():
+                new_value = new_value + "_"
+            #new_values = ["Unknown{}".format(n+1) for n in range(missing_values.sum())]
+            data.loc[missing_values,field] = new_values
+    return data
+
 def one_hot(series, categories=None):
     """
     Given a series of M categorical values,
@@ -25,7 +47,7 @@ def one_hot(series, categories=None):
 
 def pca_transform(data, field_info, max_pcs, scale=False):
     """
-    Apply PCA to the data.
+    Apply PCA to the data. There must be no missing values.
     Return the pca object and the transformed data.
     """
     numeric_fieldspec = field_info['FieldType']=='Numeric'
