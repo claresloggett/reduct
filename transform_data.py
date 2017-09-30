@@ -4,61 +4,93 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 
-def fill_missing_values(data, field_info, sample_info,
-                    numeric_method='mean', categorical_method='common_unknown'):
+def complete_missing_data(data, field_info,
+                          method='fill_values',
+                          numeric_fill='mean',
+                          categorical_fill='common_unknown'):
     """
     Fill in missing values, or delete rows/columns, to produce
     a dataset with no missing values.
-    Allowed numerical_method values:
+    Allowed methods:
+        drop_fields: drop fields with any missing values
+        drop_samples: drop samples with any missing values
+        fill_values: fill in missing values
+    If fill_values, numeric_fill and categorical_fill will be used -
+    otherwise these fields are ignored.
+    Allowed numeric_fill values:
         zeroes: fill in with zeroes (rarely useful)
         mean: fill in with the mean of that column
-    Allowed categorical_method values:
+    Allowed categorical_fill values:
         common_unknown: fill in with a single new "Unknown" category
         unique_unknown: fill in each missing value with a unique category
                         This prevents unknowns from clustering together artificially
+
+    Returns (completed, fields_kept, samples_kept)
+    where completed is the modified data array
+          fields_kept is a boolean of the original fields
+          samples_kept is a boolean of the original samples
     """
-    # For now test simple methods: just fill in with zeroes and 'Unknown's
-    data_missing = data.isnull().sum() > 0
-    numeric = field_info['FieldType']=='Numeric'
-    categorical = field_info['FieldType']=='Categorical'
-    numeric_fields = data.columns[data_missing & numeric]
-    categorical_fields = data.columns[data_missing & categorical]
+    if method=='drop_fields':
 
-    if numeric_method not in "zeroes mean".split():
-        raise ValueError("Unknown missing value method for numeric fields: "+numerical_method)
-    if categorical_method not in "common_unknown unique_unknown".split():
-        raise ValueError("Unknown missing value method for categorical fields: "+categorical_method)
+        fields_kept = data.isnull().sum() == 0
+        completed = data.loc[:,fields_kept]
+        samples_kept = pd.Series(True, index=data.index)
 
-    completed = data.copy()
+    elif method=='drop_samples':
 
-    for field in numeric_fields:
-        print("Filling in missing values in "+field)
-        missing_values = data[field].isnull()
-        if numeric_method=='zeroes':
-            completed.loc[missing_values,field] = 0
-        elif numeric_method=='mean':
-            completed.loc[missing_values,field] = data[field].mean()
+        samples_kept = data.isnull().sum(axis=1) == 0
+        completed = data.loc[samples_kept,:]
+        fields_kept = pd.Series(True, index=field_info.index)  # same as data.columns
 
-    for field in categorical_fields:
-        print("Filling in missing values in "+field)
-        missing_values = data[field].isnull()
-        if categorical_method=='common_unknown':
-            print("Common unknown")
-            new_value = 'Unknown'
-            # Make sure this value does not already exist in data
-            while new_value in data[field].unique():
-                new_value = new_value + "_"
-            completed.loc[missing_values,field] = new_value
-        elif categorical_method=='unique_unknown':
-            print("Unique unknown")
-            new_values = ["Unknown{}".format(n+1) for n in range(missing_values.sum())]
-            # Make sure none of these values already exist in data
-            while data[field].isin(new_values).sum() > 0:
-                new_values = [v+"_" for v in new_values]
-            completed.loc[missing_values,field] = new_values
+    elif method=='fill_values':
+
+        if numeric_fill not in "zeroes mean".split():
+            raise ValueError("Unknown missing value method for numeric fields: "+numeric_fill)
+        if categorical_fill not in "common_unknown unique_unknown".split():
+            raise ValueError("Unknown missing value method for categorical fields: "+categorical_fill)
+
+        fields_kept = pd.Series(True, index=field_info.index)  # same as data.columns
+        samples_kept = pd.Series(True, index=data.index)
+
+        data_missing = data.isnull().sum() > 0
+        numeric = field_info['FieldType']=='Numeric'
+        categorical = field_info['FieldType']=='Categorical'
+        numeric_fields = data.columns[data_missing & numeric]
+        categorical_fields = data.columns[data_missing & categorical]
+
+        completed = data.copy()
+
+        for field in numeric_fields:
+            print("Filling in missing values in "+field)
+            missing_values = data[field].isnull()
+            if numeric_fill=='zeroes':
+                completed.loc[missing_values,field] = 0
+            elif numeric_fill=='mean':
+                completed.loc[missing_values,field] = data[field].mean()
+
+        for field in categorical_fields:
+            print("Filling in missing values in "+field)
+            missing_values = data[field].isnull()
+            if categorical_fill=='common_unknown':
+                print("Common unknown")
+                new_value = 'Unknown'
+                # Make sure this value does not already exist in data
+                while new_value in data[field].unique():
+                    new_value = new_value + "_"
+                completed.loc[missing_values,field] = new_value
+            elif categorical_fill=='unique_unknown':
+                print("Unique unknown")
+                new_values = ["Unknown{}".format(n+1) for n in range(missing_values.sum())]
+                # Make sure none of these values already exist in data
+                while data[field].isin(new_values).sum() > 0:
+                    new_values = [v+"_" for v in new_values]
+                completed.loc[missing_values,field] = new_values
+
+    else:
+        raise ValueError("Unknown missing data method "+method)
 
     #print(completed.head(10))
-    return completed
+    return (completed, fields_kept, samples_kept)
 
 def one_hot(series, categories=None):
     """

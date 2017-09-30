@@ -13,7 +13,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 from ingest_data import parse_input
-from transform_data import fill_missing_values, pca_transform
+from transform_data import complete_missing_data, pca_transform
 
 # Parse command-line
 parser = argparse.ArgumentParser(description='App for visualising high-dimensional data')
@@ -92,19 +92,28 @@ app.layout = html.Div(children=[
 
     html.Div(id='missing_data',
     children=[
-        html.Label("Missing values in numeric fields:"),
-        dcc.RadioItems(id='missing_numeric_selector',
+        html.Label("Missing data:"),
+        dcc.RadioItems(id='missing_data_selector',
+            options=[{'label':"Drop fields with any missing values", 'value':'drop_fields'},
+                     {'label':"Drop samples with any missing values", 'value':'drop_samples'},
+                     {'label':"Fill missing values", 'value':'fill_values'}],
+            value='fill_values'
+        ),
+
+        html.Label("Missing value fill in numeric fields:"),
+        dcc.RadioItems(id='missing_numeric_fill',
             options=[{'label':"Replace with zero", 'value':'zeroes'},
                      {'label':"Replace with mean value for field", 'value':'mean'}],
             value='mean'
-            ),
-        html.Label("Missing values in categorical fields:"),
-        dcc.RadioItems(id='missing_categorical_selector',
+        ),
+
+        html.Label("Missing value fill in categorical fields:"),
+        dcc.RadioItems(id='missing_categorical_fill',
             options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
                      {'label':"Replace with unique category per sample - this can stop unknowns clustering",
                       'value':'unique_unknown'}],
             value='common_unknown'
-            ),
+        ),
     ]),
 
     html.Div(id='axis_component_selectors',
@@ -127,8 +136,9 @@ app.layout = html.Div(children=[
 
 # Build input list for update_pca dynamically, based on available selectors
 pca_input_components = [Input('scale_selector','value'),
-                        Input('missing_numeric_selector','value'),
-                        Input('missing_categorical_selector','value')]
+                        Input('missing_data_selector','value'),
+                        Input('missing_numeric_fill','value'),
+                        Input('missing_categorical_fill','value')]
 if args.show_fieldtable:
     pca_input_components.append(Input('field_selector_table','selected_row_indices'))
 else:
@@ -138,19 +148,32 @@ else:
     Output('hidden_data_div', 'children'),
     pca_input_components
 )
-def update_pca(scale, numeric_method, categorical_method, selected_fields):
+def update_pca(scale, missing_data_method, numeric_fill, categorical_fill, selected_fields):
     """
-    Re-do the PCA based on included fields.
+    Re-do the PCA based on included fields and missing data handling.
     Store in a hidden div.
+    Logical order of data processing is:
+    - filter out any fields the user has manually deselected
+    - apply chosen missing data method
+    - PCA
     """
     print("Updating PCA data")
     if not args.show_fieldtable:
         assert selected_fields is None
         selected_fields = list(range(data.shape[1]))
-    data_completed = fill_missing_values(data, field_info, sample_info,
-                                         numeric_method, categorical_method)
-    pca, transformed = pca_transform(data_completed.iloc[:,selected_fields],
-                                     field_info.iloc[selected_fields,:],
+    data_completed, fields_kept, samples_kept = complete_missing_data(
+                                         data.iloc[:,selected_fields],
+                                         field_info.iloc[selected_fields,:],
+                                         missing_data_method,
+                                         numeric_fill, categorical_fill)
+    # fields_kept is a boolean over fields_info.index[selected_fields].
+    # samples_kept and fields_kept, plus selected_fields, are
+    # already applied in calculating data_completed.
+    # However we need to subset field_info.
+    # Could reapply selected_fields and apply fields_kept,
+    # or can just take data_completed.columns
+    pca, transformed = pca_transform(data_completed,
+                                     field_info.loc[data_completed.columns,:],
                                      max_pcs=args.num_pcs,
                                      scale=scale)
     print("PCA results shape {}".format(transformed.shape))
@@ -215,6 +238,8 @@ def update_figure(x_field, y_field, colour_field, stored_data):
         print("Axes dropdowns not initialised yet; skipping figure callback")
         return {'data': [], 'layout': {'title': 'Calculating plot...'}}
     transformed = pd.read_json(json.loads(stored_data)['transformed'], orient='split')
+    # In case we dropped any samples during transformation
+    sample_info_used = sample_info.loc[transformed.index,:]
     if colour_field == 'None':
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
                   mode='markers', marker=dict(size=10),
@@ -223,8 +248,8 @@ def update_figure(x_field, y_field, colour_field, stored_data):
         # Make separate traces to get colours and a legend.
         # Is this the best way?
         traces = []
-        for value in sample_info[colour_field].unique():
-            rows = sample_info[colour_field] == value
+        for value in sample_info_used[colour_field].unique():
+            rows = sample_info_used[colour_field] == value
             traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
                           mode='markers', marker=dict(size=10),
                           name=value, text=transformed.index[rows]))
