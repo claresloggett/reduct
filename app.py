@@ -25,6 +25,9 @@ parser.add_argument('--field-table', dest='show_fieldtable', action='store_true'
                      help='display FieldInfo table for info and manual selection')
 parser.add_argument('--hover-sampleinfo', dest='hover_sampleinfo', action='store_true',
                      help='show sample info fields on mouseover (default is just sample ID)')
+parser.add_argument('--hover-data', dest='hover_data', action='store_true',
+                     help='show data values on mouseover (default is just sample ID). This can be verbose.')
+
 # max_PCs
 args = parser.parse_args()
 
@@ -254,10 +257,18 @@ def update_figure(x_field, y_field, colour_field, stored_data):
     # In case we dropped any samples during transformation
     sample_info_used = sample_info.loc[transformed.index,:]
 
+    # Show sample ID on hover
     hover_text = transformed.index
     if args.hover_sampleinfo:
+        # Show sample info fields on hover
         hover_text = hover_text.str.cat([sample_info_used[field].apply(lambda v:"{}={}".format(field,v))
                                          for field in sample_info_used.columns],
+                                         sep=' | ')
+    if args.hover_data:
+        # Show data values on hover. Will include deselected fields and filtered fields.
+        data_used = data.loc[transformed.index,:]
+        hover_text = hover_text.str.cat([data_used[field].apply(lambda v:"{}={}".format(field,v))
+                                         for field in data_used.columns],
                                          sep=' | ')
     if colour_field == 'None':
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
