@@ -20,6 +20,7 @@ parser = argparse.ArgumentParser(description='App for visualising high-dimension
 parser.add_argument('infile', help='CSV file of data to visualise')
 parser.add_argument('--separator', default=',', help='separator character in tabular input')
 parser.add_argument('--num-pcs', type=int, default='10', help='number of principal components to present')
+parser.add_argument('--field-table', dest='show_fieldtable', action='store_true')
 # max_PCs
 args = parser.parse_args()
 
@@ -36,18 +37,40 @@ app = dash.Dash()
 app.scripts.config.serve_locally = True
 app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
 
+if args.show_fieldtable:
+    # Create the fieldinfo table for selecting fields
+    fieldinfo_elements = [
+        html.Label('Include fields'),
+        dash_table_experiments.DataTable(
+            id='field_selector_table',
+            rows=field_info_table.to_dict('records'),
+            columns=['Field'] + [f for f in field_info_table.columns if f!='Field'], #put field first
+            row_selectable=True,
+            sortable=True,
+            selected_row_indices=list(range(len(field_info_table))) #by number, not df index
+        )]
+else:
+    fieldinfo_elements = []
+
+starting_axes_dropdowns = [
+    html.Label('X-axis'),
+    dcc.Dropdown(
+        id='x_dropdown',
+        value=None
+        # options and value created by callback
+    ),
+    html.Label('Y-axis'),
+    dcc.Dropdown(
+        id='y_dropdown',
+        value=None
+        # options and value created by callback
+    )]
+
+
 app.layout = html.Div(children=[
     #html.H1(children='Data embedding'),
 
-    html.Label('Include fields'),
-    dash_table_experiments.DataTable(
-        id='field_selector_table',
-        rows=field_info_table.to_dict('records'),
-        columns=['Field'] + [f for f in field_info_table.columns if f!='Field'], #put field first
-        row_selectable=True,
-        sortable=True,
-        selected_row_indices=list(range(len(field_info_table))) #by number, not df index
-    ),
+    *fieldinfo_elements,
 
     # children will be overwritten with stored data
     html.Div(id='hidden_data_div',
@@ -63,18 +86,7 @@ app.layout = html.Div(children=[
     ),
 
     html.Div(id='axis_component_selectors',
-        children=[
-        html.Label('X-axis'),
-        dcc.Dropdown(
-            id='x_dropdown'
-            # options and value created by callback
-        ),
-
-        html.Label('Y-axis'),
-        dcc.Dropdown(
-            id='y_dropdown'
-            # options and value created by callback
-        )]
+             children=starting_axes_dropdowns
     ),
 
     html.Label('Colour points by'),
@@ -91,16 +103,33 @@ app.layout = html.Div(children=[
 
 ])
 
-@app.callback(
-    Output('hidden_data_div', 'children'),
-    [Input('field_selector_table','selected_row_indices'),
-    Input('scale_selector','value')]
-)
+# Set a different callback depending on whether field_selector_table exists
+# Is there a better way?
+if args.show_fieldtable:
+    @app.callback(
+        Output('hidden_data_div', 'children'),
+        [Input('field_selector_table','selected_row_indices'),
+         Input('scale_selector','value')]
+    )
+    def update_pca_callback(selected_fields, scale):
+        return update_pca(selected_fields, scale)
+else:
+    @app.callback(
+        Output('hidden_data_div', 'children'),
+        [Input('scale_selector','value')]
+    )
+    def update_pca_callback(scale):
+        return update_pca(selected_fields=None, scale=scale)
+
 def update_pca(selected_fields, scale):
     """
     Re-do the PCA based on included fields.
     Store in a hidden div.
     """
+    print("Updating PCA data")
+    if not args.show_fieldtable:
+        assert selected_fields is None
+        selected_fields = list(range(data.shape[1]))
     pca, transformed = pca_transform(data.iloc[:,selected_fields],
                                      field_info.iloc[selected_fields,:],
                                      max_pcs=args.num_pcs,
