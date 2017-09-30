@@ -247,11 +247,12 @@ def update_figure(x_field, y_field, colour_field, stored_data):
         print("Axes dropdowns not initialised yet; skipping figure callback")
         return {'data': [], 'layout': {'title': 'Calculating plot...'}}
     transformed = pd.read_json(json.loads(stored_data)['transformed'], orient='split')
+    print("Plotting {} points".format(len(transformed)))
     # In case we dropped any samples during transformation
     sample_info_used = sample_info.loc[transformed.index,:]
     if colour_field == 'None':
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
-                  mode='markers', marker=dict(size=10),
+                  mode='markers', marker=dict(size=10, opacity=0.7),
                   text=transformed.index)]
     else:
         # Make separate traces to get colours and a legend.
@@ -260,7 +261,7 @@ def update_figure(x_field, y_field, colour_field, stored_data):
         for value in sample_info_used[colour_field].unique():
             rows = sample_info_used[colour_field] == value
             traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
-                          mode='markers', marker=dict(size=10),
+                          mode='markers', marker=dict(size=10, opacity=0.7),
                           name=value, text=transformed.index[rows]))
     figure = {
         'data': traces,
