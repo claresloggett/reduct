@@ -21,7 +21,10 @@ parser = argparse.ArgumentParser(description='App for visualising high-dimension
 parser.add_argument('infile', help='CSV file of data to visualise')
 parser.add_argument('--separator', default=',', help='separator character in tabular input')
 parser.add_argument('--num-pcs', type=int, default='10', help='number of principal components to present')
-parser.add_argument('--field-table', dest='show_fieldtable', action='store_true')
+parser.add_argument('--field-table', dest='show_fieldtable', action='store_true',
+                     help='display FieldInfo table for info and manual selection')
+parser.add_argument('--hover-sampleinfo', dest='hover_sampleinfo', action='store_true',
+                     help='show sample info fields on mouseover (default is just sample ID)')
 # max_PCs
 args = parser.parse_args()
 
@@ -250,10 +253,16 @@ def update_figure(x_field, y_field, colour_field, stored_data):
     print("Plotting {} points".format(len(transformed)))
     # In case we dropped any samples during transformation
     sample_info_used = sample_info.loc[transformed.index,:]
+
+    hover_text = transformed.index
+    if args.hover_sampleinfo:
+        hover_text = hover_text.str.cat([sample_info_used[field].apply(lambda v:"{}={}".format(field,v))
+                                         for field in sample_info_used.columns],
+                                         sep=' | ')
     if colour_field == 'None':
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
                   mode='markers', marker=dict(size=10, opacity=0.7),
-                  text=transformed.index)]
+                  text=hover_text)]
     else:
         # Make separate traces to get colours and a legend.
         # Is this the best way?
@@ -262,7 +271,7 @@ def update_figure(x_field, y_field, colour_field, stored_data):
             rows = sample_info_used[colour_field] == value
             traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
                           mode='markers', marker=dict(size=10, opacity=0.7),
-                          name=value, text=transformed.index[rows]))
+                          name=value, text=hover_text[rows]))
     figure = {
         'data': traces,
         'layout': {
