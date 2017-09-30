@@ -4,10 +4,18 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 
-def fill_in_missing(data, field_info, sample_info):
+def fill_missing_values(data, field_info, sample_info,
+                    numeric_method='mean', categorical_method='common_unknown'):
     """
     Fill in missing values, or delete rows/columns, to produce
     a dataset with no missing values.
+    Allowed numerical_method values:
+        zeroes: fill in with zeroes (rarely useful)
+        mean: fill in with the mean of that column
+    Allowed categorical_method values:
+        common_unknown: fill in with a single new "Unknown" category
+        unique_unknown: fill in each missing value with a unique category
+                        This prevents unknowns from clustering together artificially
     """
     # For now test simple methods: just fill in with zeroes and 'Unknown's
     data_missing = data.isnull().sum() > 0
@@ -16,21 +24,41 @@ def fill_in_missing(data, field_info, sample_info):
     numeric_fields = data.columns[data_missing & numeric]
     categorical_fields = data.columns[data_missing & categorical]
 
+    if numeric_method not in "zeroes mean".split():
+        raise ValueError("Unknown missing value method for numeric fields: "+numerical_method)
+    if categorical_method not in "common_unknown unique_unknown".split():
+        raise ValueError("Unknown missing value method for categorical fields: "+categorical_method)
+
+    completed = data.copy()
+
     for field in numeric_fields:
         print("Filling in missing values in "+field)
         missing_values = data[field].isnull()
-        data.loc[missing_values,field] = 0
+        if numeric_method=='zeroes':
+            completed.loc[missing_values,field] = 0
+        elif numeric_method=='mean':
+            completed.loc[missing_values,field] = data[field].mean()
 
     for field in categorical_fields:
         print("Filling in missing values in "+field)
         missing_values = data[field].isnull()
-        new_value = 'Unknown'
-        while new_value in data[field].unique():
-            new_value = new_value + "_"
-        #new_values = ["Unknown{}".format(n+1) for n in range(missing_values.sum())]
-        data.loc[missing_values,field] = new_value
+        if categorical_method=='common_unknown':
+            print("Common unknown")
+            new_value = 'Unknown'
+            # Make sure this value does not already exist in data
+            while new_value in data[field].unique():
+                new_value = new_value + "_"
+            completed.loc[missing_values,field] = new_value
+        elif categorical_method=='unique_unknown':
+            print("Unique unknown")
+            new_values = ["Unknown{}".format(n+1) for n in range(missing_values.sum())]
+            # Make sure none of these values already exist in data
+            while data[field].isin(new_values).sum() > 0:
+                new_values = [v+"_" for v in new_values]
+            completed.loc[missing_values,field] = new_values
 
-    return data
+    #print(completed.head(10))
+    return completed
 
 def one_hot(series, categories=None):
     """

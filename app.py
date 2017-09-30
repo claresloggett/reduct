@@ -13,7 +13,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 from ingest_data import parse_input
-from transform_data import fill_in_missing, pca_transform
+from transform_data import fill_missing_values, pca_transform
 
 # Parse command-line
 parser = argparse.ArgumentParser(description='App for visualising high-dimensional data')
@@ -90,6 +90,23 @@ app.layout = html.Div(children=[
         value=False  # TODO: set default to True if any categorical fields?
     ),
 
+    html.Div(id='missing_data',
+    children=[
+        html.Label("Missing values in numeric fields:"),
+        dcc.RadioItems(id='missing_numeric_selector',
+            options=[{'label':"Replace with zero", 'value':'zeroes'},
+                     {'label':"Replace with mean value for field", 'value':'mean'}],
+            value='mean'
+            ),
+        html.Label("Missing values in categorical fields:"),
+        dcc.RadioItems(id='missing_categorical_selector',
+            options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
+                     {'label':"Replace with unique category per sample - this can stop unknowns clustering",
+                      'value':'unique_unknown'}],
+            value='common_unknown'
+            ),
+    ]),
+
     html.Div(id='axis_component_selectors',
              children=starting_axes_dropdowns
     ),
@@ -109,7 +126,9 @@ app.layout = html.Div(children=[
 ])
 
 # Build input list for update_pca dynamically, based on available selectors
-pca_input_components = [Input('scale_selector','value')]
+pca_input_components = [Input('scale_selector','value'),
+                        Input('missing_numeric_selector','value'),
+                        Input('missing_categorical_selector','value')]
 if args.show_fieldtable:
     pca_input_components.append(Input('field_selector_table','selected_row_indices'))
 else:
@@ -119,7 +138,7 @@ else:
     Output('hidden_data_div', 'children'),
     pca_input_components
 )
-def update_pca(scale, selected_fields):
+def update_pca(scale, numeric_method, categorical_method, selected_fields):
     """
     Re-do the PCA based on included fields.
     Store in a hidden div.
@@ -128,7 +147,8 @@ def update_pca(scale, selected_fields):
     if not args.show_fieldtable:
         assert selected_fields is None
         selected_fields = list(range(data.shape[1]))
-    data_completed = fill_in_missing(data, field_info, sample_info)
+    data_completed = fill_missing_values(data, field_info, sample_info,
+                                         numeric_method, categorical_method)
     pca, transformed = pca_transform(data_completed.iloc[:,selected_fields],
                                      field_info.iloc[selected_fields,:],
                                      max_pcs=args.num_pcs,
