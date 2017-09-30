@@ -89,6 +89,7 @@ def complete_missing_data(data, field_info,
     else:
         raise ValueError("Unknown missing data method "+method)
 
+    print("Data shape after missing data handling: {}".format(completed.shape))
     #print(completed.head(10))
     return (completed, fields_kept, samples_kept)
 
