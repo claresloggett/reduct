@@ -32,7 +32,7 @@ field_info_table = field_info
 field_info_table['Field'] = field_info_table.index
 
 app = dash.Dash()
-app.css.config.serve_locally = True
+#app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True
 app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
 
@@ -49,7 +49,10 @@ app.layout = html.Div(children=[
         selected_row_indices=list(range(len(field_info_table))) #by number, not df index
     ),
 
-    html.Div(id='hidden_data_div', style={'display':'none'}),
+    # children will be overwritten with stored data
+    html.Div(id='hidden_data_div',
+             children="",
+             style={'display':'none'}),
 
     html.Label('Scale numeric fields'),
     dcc.RadioItems(
@@ -115,6 +118,10 @@ def update_pca_axes(transformed_data_json, previous_x, previous_y):
     """
     When PCA has been updated, re-generate the lists of available axes.
     """
+    print("Updating PCA axes dropdowns")
+    if transformed_data_json=="":
+        print("Data not initialised yet; skipping axes callback")
+        return starting_axes_dropdowns
     stored_data = json.loads(transformed_data_json)
     transformed = pd.read_json(stored_data['transformed'], orient='split')
     variance_ratios = stored_data['variance_ratios']
@@ -150,7 +157,15 @@ def update_pca_axes(transformed_data_json, previous_x, previous_y):
 )
 def update_figure(x_field, y_field, colour_field, stored_data):
     # If storing transformed data this way, ought to memoise PCA calculation
-    print("Updating plot")
+    print("Updating figure")
+    # Don't try to calculate plot if UI controls not initialised yet
+    # Note that we must however return a valid figure specification
+    if stored_data=="":
+        print("Data not initialised yet; skipping figure callback")
+        return {'data': [], 'layout': {'title': 'Calculating plot...'}}
+    if x_field is None or y_field is None:
+        print("Axes dropdowns not initialised yet; skipping figure callback")
+        return {'data': [], 'layout': {'title': 'Calculating plot...'}}
     transformed = pd.read_json(json.loads(stored_data)['transformed'], orient='split')
     if colour_field == 'None':
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
