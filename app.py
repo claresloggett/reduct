@@ -77,6 +77,11 @@ app.layout = html.Div(children=[
              children="",
              style={'display':'none'}),
 
+    # Dummy input
+    html.Div(id='dummy_input',
+             children=None,
+             style={'display':'none'}),
+
     html.Label('Scale numeric fields'),
     dcc.RadioItems(
         id='scale_selector',
@@ -103,25 +108,18 @@ app.layout = html.Div(children=[
 
 ])
 
-# Set a different callback depending on whether field_selector_table exists
-# Is there a better way?
+# Build input list for update_pca dynamically, based on available selectors
+pca_input_components = [Input('scale_selector','value')]
 if args.show_fieldtable:
-    @app.callback(
-        Output('hidden_data_div', 'children'),
-        [Input('field_selector_table','selected_row_indices'),
-         Input('scale_selector','value')]
-    )
-    def update_pca_callback(selected_fields, scale):
-        return update_pca(selected_fields, scale)
+    pca_input_components.append(Input('field_selector_table','selected_row_indices'))
 else:
-    @app.callback(
-        Output('hidden_data_div', 'children'),
-        [Input('scale_selector','value')]
-    )
-    def update_pca_callback(scale):
-        return update_pca(selected_fields=None, scale=scale)
+    pca_input_components.append(Input('dummy_input','children'))
 
-def update_pca(selected_fields, scale):
+@app.callback(
+    Output('hidden_data_div', 'children'),
+    pca_input_components
+)
+def update_pca(scale, selected_fields):
     """
     Re-do the PCA based on included fields.
     Store in a hidden div.
