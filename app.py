@@ -79,12 +79,12 @@ starting_axes_dropdowns = [
     )]
 
 if args.colour_by_data:
-    colour_fields = [{'label':'None','value':('None','None')}] + \
-                    [{'label':val,'value':('SI',val)} for val in list(sample_info.columns)] + \
-                    [{'label':val,'value':('D',val)} for val in list(data.columns)]
+    colour_fields = [{'label':'None','value':'NONE'}] + \
+                    [{'label':val,'value':'SINF'+val} for val in list(sample_info.columns)] + \
+                    [{'label':val,'value':'DATA'+val} for val in list(data.columns)]
 else:
-    colour_fields = [{'label':'None','value':('None','None')}] + \
-                    [{'label':val,'value':('SI',val)} for val in list(sample_info.columns)]
+    colour_fields = [{'label':'None','value':'NONE'}] + \
+                    [{'label':val,'value':'SINF'+val} for val in list(sample_info.columns)]
 
 app.layout = html.Div(children=[
     #html.H1(children='Data embedding'),
@@ -148,7 +148,7 @@ app.layout = html.Div(children=[
     dcc.Dropdown(
         id='colour_dropdown',
         options = colour_fields,
-        value=('None','None')
+        value='NONE'
     ),
 
     dcc.Graph(
@@ -280,18 +280,18 @@ def update_figure(x_field, y_field, colour_field_selection, stored_data):
                                          for field in data_used.columns],
                                          sep=' | ')
 
-    colour_field_source, colour_field = colour_field_selection
-    if colour_field == 'None':
+    colour_field_source, colour_field = colour_field_selection[:4], colour_field_selection[4:]
+    if colour_field_source == 'NONE':
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
                   mode='markers', marker=dict(size=10, opacity=0.7),
                   text=hover_text)]
     else:
         # Make separate traces to get colours and a legend.
         # Is this the best way?
-        if colour_field_source=='SI':
+        if colour_field_source=='SINF':
             colour_values = sample_info_used[colour_field]
         else:
-            assert colour_field_source=='D'
+            assert colour_field_source=='DATA'
             colour_values = data.loc[transformed.index,colour_field]
         traces = []
         # points with missing values
@@ -300,7 +300,12 @@ def update_figure(x_field, y_field, colour_field_selection, stored_data):
             traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
                           mode='markers', marker=dict(size=10, opacity=0.7),
                           name='Unknown', text=hover_text[rows]))
-        for value in colour_values.unique():
+        # points with a colour field value - in category order if category, else sorted
+        if pd.core.common.is_categorical_dtype(colour_values):
+            unique_colour_values = colour_values.cat.categories
+        else:
+            unique_colour_values = sorted(colour_values.unique(), key=lambda x:str(x))
+        for value in unique_colour_values:
             rows = colour_values == value
             traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
                           mode='markers', marker=dict(size=10, opacity=0.7),
