@@ -124,19 +124,22 @@ app.layout = html.Div(children=[
             value='fill_values'
         ),
 
-        html.Label(children="Missing value fill in numeric fields:", id='missing_numeric_label'),
-        dcc.RadioItems(id='missing_numeric_fill',
-            options=[{'label':"Replace with zero", 'value':'zeroes'},
-                     {'label':"Replace with mean value for field", 'value':'mean'}],
-            value='mean'
-        ),
+        html.Div(id='missing_fill_selectors',
+            children=[
+            html.Label(children="Missing value fill in numeric fields:", id='missing_numeric_label'),
+            dcc.RadioItems(id='missing_numeric_fill',
+                options=[{'label':"Replace with zero", 'value':'zeroes'},
+                         {'label':"Replace with mean value for field", 'value':'mean'}],
+                value='mean'
+            ),
 
-        html.Label("Missing value fill in categorical fields:", id='missing_categorical_label'),
-        dcc.RadioItems(id='missing_categorical_fill',
-            options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
-                     {'label':"Replace with unique category per sample - this can stop unknowns clustering",
-                      'value':'unique_unknown'}],
-            value='common_unknown'
+            html.Label("Missing value fill in categorical fields:", id='missing_categorical_label'),
+            dcc.RadioItems(id='missing_categorical_fill',
+                options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
+                         {'label':"Replace with unique category per sample - this can stop unknowns clustering",
+                          'value':'unique_unknown'}],
+                value='common_unknown'
+            )]
         ),
     ]),
 
@@ -321,6 +324,17 @@ def update_figure(x_field, y_field, colour_field_selection, stored_data):
         }
     }
     return figure
+
+@app.callback(
+    Output('missing_fill_selectors','style'),
+    [Input('missing_data_selector','value')],
+)
+def grey_fill_dropdowns(missing_data_method):
+    """Grey/ungrey fill radio elements when they are being ignored/not ignored."""
+    if missing_data_method=='fill_values':
+        return {}
+    else:
+        return {'color': 'gray'}
 
 
 if __name__ == '__main__':
