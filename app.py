@@ -27,6 +27,8 @@ parser.add_argument('--hover-sampleinfo', dest='hover_sampleinfo', action='store
                      help='show sample info fields on mouseover (default is just sample ID)')
 parser.add_argument('--hover-data', dest='hover_data', action='store_true',
                      help='show data values on mouseover (default is just sample ID). This can be verbose.')
+parser.add_argument('--colour-by-data', dest='colour_by_data', action='store_true',
+                     help='allow selection of data fields as well as sampleinfo for colouring points')
 
 # max_PCs
 args = parser.parse_args()
@@ -76,6 +78,13 @@ starting_axes_dropdowns = [
         # options and value created by callback
     )]
 
+if args.colour_by_data:
+    colour_fields = [{'label':'None','value':('None','None')}] + \
+                    [{'label':val,'value':('SI',val)} for val in list(sample_info.columns)] + \
+                    [{'label':val,'value':('D',val)} for val in list(data.columns)]
+else:
+    colour_fields = [{'label':'None','value':('None','None')}] + \
+                    [{'label':val,'value':('SI',val)} for val in list(sample_info.columns)]
 
 app.layout = html.Div(children=[
     #html.H1(children='Data embedding'),
@@ -115,14 +124,14 @@ app.layout = html.Div(children=[
             value='fill_values'
         ),
 
-        html.Label("Missing value fill in numeric fields:"),
+        html.Label(children="Missing value fill in numeric fields:", id='missing_numeric_label'),
         dcc.RadioItems(id='missing_numeric_fill',
             options=[{'label':"Replace with zero", 'value':'zeroes'},
                      {'label':"Replace with mean value for field", 'value':'mean'}],
             value='mean'
         ),
 
-        html.Label("Missing value fill in categorical fields:"),
+        html.Label("Missing value fill in categorical fields:", id='missing_categorical_label'),
         dcc.RadioItems(id='missing_categorical_fill',
             options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
                      {'label':"Replace with unique category per sample - this can stop unknowns clustering",
@@ -138,8 +147,8 @@ app.layout = html.Div(children=[
     html.Label('Colour points by'),
     dcc.Dropdown(
         id='colour_dropdown',
-        options = [{'label':val,'value':val} for val in ['None']+list(sample_info.columns)],
-        value='None'
+        options = colour_fields,
+        value=('None','None')
     ),
 
     dcc.Graph(
@@ -241,7 +250,7 @@ def update_pca_axes(transformed_data_json, previous_x, previous_y):
      Input('colour_dropdown','value')],
     state=[State('hidden_data_div', 'children')]
 )
-def update_figure(x_field, y_field, colour_field, stored_data):
+def update_figure(x_field, y_field, colour_field_selection, stored_data):
     # If storing transformed data this way, ought to memoise PCA calculation
     print("Updating figure")
     # Don't try to calculate plot if UI controls not initialised yet
@@ -270,6 +279,8 @@ def update_figure(x_field, y_field, colour_field, stored_data):
         hover_text = hover_text.str.cat([data_used[field].apply(lambda v:"{}={}".format(field,v))
                                          for field in data_used.columns],
                                          sep=' | ')
+
+    colour_field_source, colour_field = colour_field_selection
     if colour_field == 'None':
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
                   mode='markers', marker=dict(size=10, opacity=0.7),
@@ -277,12 +288,24 @@ def update_figure(x_field, y_field, colour_field, stored_data):
     else:
         # Make separate traces to get colours and a legend.
         # Is this the best way?
+        if colour_field_source=='SI':
+            colour_values = sample_info_used[colour_field]
+        else:
+            assert colour_field_source=='D'
+            colour_values = data.loc[transformed.index,colour_field]
         traces = []
-        for value in sample_info_used[colour_field].unique():
-            rows = sample_info_used[colour_field] == value
+        # points with missing values
+        if colour_values.isnull().sum() > 0:
+            rows = colour_values.isnull()
+            traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
+                          mode='markers', marker=dict(size=10, opacity=0.7),
+                          name='Unknown', text=hover_text[rows]))
+        for value in colour_values.unique():
+            rows = colour_values == value
             traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
                           mode='markers', marker=dict(size=10, opacity=0.7),
                           name=value, text=hover_text[rows]))
+
     figure = {
         'data': traces,
         'layout': {
