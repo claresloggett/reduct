@@ -285,12 +285,23 @@ def update_figure(x_field, y_field, colour_field_selection, stored_data):
 
     colour_field_source, colour_field = colour_field_selection[:4], colour_field_selection[4:]
     if colour_field_source == 'NONE':
+        # No colouring
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
                   mode='markers', marker=dict(size=10, opacity=0.7),
                   text=hover_text)]
+    elif colour_field_source=='DATA' and field_info.loc[colour_field,'FieldType']=='Numeric':
+        # This is a numeric field; try to colour continuously
+        colour_values = data.loc[transformed.index,colour_field]
+        #colour_values[ colour_values.isnull() ] = 0  # better to let plotly handle
+        traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
+                  mode='markers',
+                  marker=dict(size=10, opacity=0.7,
+                              color=colour_values,
+                              showscale=True),
+                  text=hover_text)]
     else:
-        # Make separate traces to get colours and a legend.
-        # Is this the best way?
+        # Treat colour as a categorical field
+        # Make separate traces to get colours and a legend
         if colour_field_source=='SINF':
             colour_values = sample_info_used[colour_field]
         else:
@@ -303,7 +314,7 @@ def update_figure(x_field, y_field, colour_field_selection, stored_data):
             traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
                           mode='markers', marker=dict(size=10, opacity=0.7),
                           name='Unknown', text=hover_text[rows]))
-        # points with a colour field value - in category order if category, else sorted
+        # points with a colour field value - in category order if pandas category, else sorted
         if pd.core.common.is_categorical_dtype(colour_values):
             unique_colour_values = colour_values.cat.categories
         else:
