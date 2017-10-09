@@ -1,0 +1,8 @@
+RowType,SampleName,Group,x1,x2,x3,x4,c5,c6
+ColumnType,RowID,RowInfo,Numeric,Numeric,Numeric,Numeric,Categorical,Categorical
+Data,A,Group1,4,7,8,4,yes,2
+Data,B,Group1,2,4,6,2,no,2
+Data,C,Group1,1,6,9,8,no,4
+Data,D,Group2,20,32,11,15,yes,4
+Data,E,Group2,72,11,0,5,yes,6
+Data,F,Group2,21,88,88,30,yes,6
