@@ -34,7 +34,7 @@ parser.add_argument('--colour-by-data', dest='colour_by_data', action='store_tru
 args = parser.parse_args()
 
 # read and parse data
-data, sample_info, field_info = parse_input(args.infile, separator=args.separator)
+data, sample_info, sample_info_types, field_info = parse_input(args.infile, separator=args.separator)
 fields = list(data.columns)
 assert list(field_info.index) == fields
 
@@ -289,41 +289,45 @@ def update_figure(x_field, y_field, colour_field_selection, stored_data):
         traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
                   mode='markers', marker=dict(size=10, opacity=0.7),
                   text=hover_text)]
-    elif colour_field_source=='DATA' and field_info.loc[colour_field,'FieldType']=='Numeric':
-        # This is a numeric field; try to colour continuously
-        colour_values = data.loc[transformed.index,colour_field]
-        #colour_values[ colour_values.isnull() ] = 0  # better to let plotly handle
-        traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
-                  mode='markers',
-                  marker=dict(size=10, opacity=0.7,
-                              color=colour_values,
-                              showscale=True),
-                  text=hover_text)]
     else:
-        # Treat colour as a categorical field
-        # Make separate traces to get colours and a legend
+        # Colour by colour field
         if colour_field_source=='SINF':
             colour_values = sample_info_used[colour_field]
+            colour_field_type = sample_info_types.loc[colour_field,'InfoType']
         else:
             assert colour_field_source=='DATA'
             colour_values = data.loc[transformed.index,colour_field]
-        traces = []
-        # points with missing values
-        if colour_values.isnull().sum() > 0:
-            rows = colour_values.isnull()
-            traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
-                          mode='markers', marker=dict(size=10, opacity=0.7),
-                          name='Unknown', text=hover_text[rows]))
-        # points with a colour field value - in category order if pandas category, else sorted
-        if pd.core.common.is_categorical_dtype(colour_values):
-            unique_colour_values = colour_values.cat.categories
+            colour_field_type = field_info.loc[colour_field,'FieldType']
+        # Use continuous colour scale if Numeric, and discrete if Categorical
+        if colour_field_type=='Numeric':
+            #colour_values[ colour_values.isnull() ] = 0  # better to let plotly handle
+            traces = [go.Scatter(x=transformed[x_field], y=transformed[y_field],
+                      mode='markers',
+                      marker=dict(size=10, opacity=0.7,
+                                  color=colour_values,
+                                  showscale=True),
+                      text=hover_text)]
         else:
-            unique_colour_values = sorted(colour_values.unique(), key=lambda x:str(x))
-        for value in unique_colour_values:
-            rows = colour_values == value
-            traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
-                          mode='markers', marker=dict(size=10, opacity=0.7),
-                          name=value, text=hover_text[rows]))
+            # Treat colour as a categorical field
+            # Make separate traces to get colours and a legend
+            assert colour_field_type=='Categorical'
+            traces = []
+            # points with missing values
+            if colour_values.isnull().sum() > 0:
+                rows = colour_values.isnull()
+                traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
+                              mode='markers', marker=dict(size=10, opacity=0.7),
+                              name='Unknown', text=hover_text[rows]))
+            # points with a colour field value - in category order if pandas category, else sorted
+            if pd.core.common.is_categorical_dtype(colour_values):
+                unique_colour_values = colour_values.cat.categories
+            else:
+                unique_colour_values = sorted(colour_values.unique(), key=lambda x:str(x))
+            for value in unique_colour_values:
+                rows = colour_values == value
+                traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
+                              mode='markers', marker=dict(size=10, opacity=0.7),
+                              name=value, text=hover_text[rows]))
 
     figure = {
         'data': traces,

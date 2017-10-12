@@ -1,5 +1,6 @@
 RowType,SampleName,Group,x1,x2,x3,x4,c5,c6
-ColumnType,RowID,RowInfo,Numeric,Numeric,Numeric,Numeric,Categorical,Categorical
+ColumnType,RowID,RowInfo,Data,Data,Data,Data,Data,Data
+DataType,,Categorical,Numeric,Numeric,Numeric,Numeric,Categorical,Categorical
 Data,A,Group1,4,7,8,4,yes,2
 Data,B,Group1,2,4,6,2,no,2
 Data,C,Group1,1,6,9,8,no,4

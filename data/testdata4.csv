@@ -1,5 +1,6 @@
 RowType,SampleName,Group,single_categorical_field
-ColumnType,RowID,RowInfo,Categorical
+ColumnType,RowID,RowInfo,Data
+DataType,,Categorical,Categorical
 Data,A,Group1,alpha
 Data,B,Group1,alpha
 Data,C,Group1,beta
