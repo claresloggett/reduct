@@ -1,0 +1,24 @@
+
+
+#sidebar {
+  width: 300px;
+  height: 100%;
+  position: fixed;
+  overflow-y: scroll;
+  float: left;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  padding: 5px;
+  background: linen;
+  margin-bottom: 100px;
+}
+
+#sidebar #lower_padding {
+  height: 100px;
+}
+
+#main_content {
+  margin-left: 300px;
+  padding: 20px;
+}
