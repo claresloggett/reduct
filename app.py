@@ -4,17 +4,20 @@ import dash_html_components as html
 from dash.dependencies import Input, Output, State, Event
 
 import dash_table_experiments
+import flask
 
 import plotly.graph_objs as go
 
 import argparse
-import os.path
+import os
 import json
 import pandas as pd
 from sklearn.decomposition import PCA
 
 from ingest_data import parse_input
 from transform_data import complete_missing_data, pca_transform
+
+app_dir = os.getcwd()
 
 # Parse command-line
 parser = argparse.ArgumentParser(description='App for visualising high-dimensional data')
@@ -45,9 +48,20 @@ field_info_table = field_info
 field_info_table['Field'] = field_info_table.index
 
 app = dash.Dash()
-#app.css.config.serve_locally = True
+
 app.scripts.config.serve_locally = True
+
+# app.server is the flask app
+# in current dash version, static as path won't work?
+# later also replace with app.send_from_directory?
+@app.server.route('/static_files/<path:path>')
+def static_file(path):
+    return flask.send_from_directory(os.path.join(app_dir,'static'), path)
+
+#app.css.config.serve_locally = True
 app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
+app.css.append_css({'external_url': '/static_files/sidebar.css'})
+
 
 if args.show_fieldtable:
     # Create the fieldinfo table for selecting fields
@@ -89,75 +103,83 @@ else:
 app.layout = html.Div(children=[
     #html.H1(children='Data embedding'),
 
-    dcc.Markdown(id='data_info',
-        children="""File {0}, {2} fields, {1} samples total""".format(os.path.basename(args.infile),
-                                                                         *data.shape)
-    ),
+    html.Div(id='sidebar',children=[
 
-    *fieldinfo_elements,
+        *fieldinfo_elements,
 
-    # children will be overwritten with stored data
-    html.Div(id='hidden_data_div',
-             children="",
-             style={'display':'none'}),
+        # children will be overwritten with stored data
+        html.Div(id='hidden_data_div',
+                 children="",
+                 style={'display':'none'}),
 
-    # Dummy input
-    html.Div(id='dummy_input',
-             children=None,
-             style={'display':'none'}),
+        # Dummy input
+        html.Div(id='dummy_input',
+                 children=None,
+                 style={'display':'none'}),
 
-    html.Label('Scale numeric fields'),
-    dcc.RadioItems(
-        id='scale_selector',
-        options=[{'label':"Scale numeric fields to std=1", 'value':True},
-                 {'label':"Leave unscaled", 'value':False}],
-        value=False  # TODO: set default to True if any categorical fields?
-    ),
-
-    html.Div(id='missing_data',
-    children=[
-        html.Label("Missing data:"),
-        dcc.RadioItems(id='missing_data_selector',
-            options=[{'label':"Drop fields with any missing values", 'value':'drop_fields'},
-                     {'label':"Drop samples with any missing values", 'value':'drop_samples'},
-                     {'label':"Fill missing values", 'value':'fill_values'}],
-            value='fill_values'
+        html.Label('Scale numeric fields', id='numericfields'),
+        dcc.RadioItems(
+            id='scale_selector',
+            options=[{'label':"Scale numeric fields to std=1", 'value':True},
+                     {'label':"Leave unscaled", 'value':False}],
+            value=False  # TODO: set default to True if any categorical fields?
         ),
 
-        html.Div(id='missing_fill_selectors',
-            children=[
-            html.Label(children="Missing value fill in numeric fields:", id='missing_numeric_label'),
-            dcc.RadioItems(id='missing_numeric_fill',
-                options=[{'label':"Replace with zero", 'value':'zeroes'},
-                         {'label':"Replace with mean value for field", 'value':'mean'}],
-                value='mean'
+        html.Div(id='missing_data',
+        children=[
+            html.Label("Missing data:"),
+            dcc.RadioItems(id='missing_data_selector',
+                options=[{'label':"Drop fields with any missing values", 'value':'drop_fields'},
+                         {'label':"Drop samples with any missing values", 'value':'drop_samples'},
+                         {'label':"Fill missing values", 'value':'fill_values'}],
+                value='fill_values'
             ),
 
-            html.Label("Missing value fill in categorical fields:", id='missing_categorical_label'),
-            dcc.RadioItems(id='missing_categorical_fill',
-                options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
-                         {'label':"Replace with unique category per sample - this can stop unknowns clustering",
-                          'value':'unique_unknown'}],
-                value='common_unknown'
-            )]
+            html.Div(id='missing_fill_selectors',
+                children=[
+                html.Label(children="Missing value fill in numeric fields:", id='missing_numeric_label'),
+                dcc.RadioItems(id='missing_numeric_fill',
+                    options=[{'label':"Replace with zero", 'value':'zeroes'},
+                             {'label':"Replace with mean value for field", 'value':'mean'}],
+                    value='mean'
+                ),
+
+                html.Label("Missing value fill in categorical fields:", id='missing_categorical_label'),
+                dcc.RadioItems(id='missing_categorical_fill',
+                    options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
+                             {'label':"Replace with unique category per sample",# - this can stop unknowns clustering",
+                              'value':'unique_unknown'}],
+                    value='common_unknown'
+                )]
+            )
+        ]),
+
+        html.Div(id='axis_component_selectors',
+                 children=starting_axes_dropdowns
         ),
+
+        html.Label('Colour points by'),
+        dcc.Dropdown(
+            id='colour_dropdown',
+            options = colour_fields,
+            value='NONE'
+        ),
+
+        html.Div(id='lower_padding'),
+
     ]),
 
-    html.Div(id='axis_component_selectors',
-             children=starting_axes_dropdowns
-    ),
+    html.Div(id='main_content',children=[
 
-    html.Label('Colour points by'),
-    dcc.Dropdown(
-        id='colour_dropdown',
-        options = colour_fields,
-        value='NONE'
-    ),
-
-    dcc.Graph(
-        id='pca_plot',  # No figure - will be generated by callback
-        animate=True
-    )
+        dcc.Markdown(id='data_info',
+            children="""File {0}, {2} fields, {1} samples total""".format(os.path.basename(args.infile),
+                                                                             *data.shape)
+        ),
+        dcc.Graph(
+            id='pca_plot',  # No figure - will be generated by callback
+            animate=True
+        )
+    ])
 
 ])
 
