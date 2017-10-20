@@ -310,7 +310,7 @@ def update_figure(x_field, y_field, colour_field_selection, stored_data):
         else:
             # Treat colour as a categorical field
             # Make separate traces to get colours and a legend
-            assert colour_field_type=='Categorical'
+            assert colour_field_type in ['Categorical','OrderedCategorical']
             traces = []
             # points with missing values
             if colour_values.isnull().sum() > 0:

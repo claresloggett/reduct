@@ -4,8 +4,7 @@ import pandas as pd
 def parse_input(infile, separator):
     """
     Parse input data from CSV file.
-    Split sample and field info from actual data,
-    and return (data, sample_info, field_info).
+    Split sample and field info from actual data.
     The first row must be the header row, with column names.
     RowType is considered a reserved column name.
     Recognised RowType values are ColumnType, DataType, FieldInfo, Data.
@@ -15,10 +14,11 @@ def parse_input(infile, separator):
     If ColumnType row does not exist, all columns are assumed to be Data, except
     the RowType column.
     Recognised DataType values are Numeric, Categorical,
-    and (not yet implemented) OrderedCategorical.
+    and OrderedCategorical.
     If DataType row does not exist, all columns are assumed to be Numeric, except
     the RowType column.
     Both FieldInfo and Data columns can have DataTypes specified.
+    Return (data, sample_info, sample_info_types, field_info).
     """
     print("Reading "+infile)
     df = pd.read_csv(infile, sep=separator, header=0, dtype=object)
@@ -31,12 +31,14 @@ def parse_input(infile, separator):
         fieldinfo_rows = df.index[df['RowType']=='FieldInfo']
         columntype_row = df.index[df['RowType']=='ColumnType']
         datatype_row = df.index[df['RowType']=='DataType']
+        allowedvalue_rows = df.index[df['RowType']=='AllowedValues']
     else:
         print("No RowType column in input data; assuming all rows are data.")
         data_rows = df.index
         fieldinfo_rows = []
         columntype_row = []
         datatype_row = []
+        allowedvalue_rows = []
 
     # Check for ColumnType row
     if len(columntype_row) > 1:
@@ -93,7 +95,7 @@ def parse_input(infile, separator):
     # Check that sample_info and data columns have recognised data types
     # If they don't, ignore them and warn the user
     # TODO: handle categorical category specifications, and ordered categories
-    recognised_datatypes = datatypes.isin(['Numeric', 'Categorical'])
+    recognised_datatypes = datatypes.isin(['Numeric', 'Categorical', 'OrderedCategorical'])
     unrecognised_data = data_columnspec & ~recognised_datatypes
     if unrecognised_data.sum() > 0:
         print("Warning: some data columns have unrecognised DataTypes, these will be ignored: " + \
@@ -147,7 +149,22 @@ def parse_input(infile, separator):
     #numeric_columns = data.columns[field_info['FieldType']=='Numeric']
     #data[numeric_columns] = data[numeric_columns].astype('float')
 
-    # TODO: Give categorical columns appropriate dtype (pandas categorical)
+    # Give categorical columns appropriate dtype (pandas categorical)
+    # If any AllowedValues supplied, use them, and let pandas set other values to NaN.
+    # (can we warn on this?)
+    # Otherwise let pandas assume observed categories are allowed categories.
+    # If OrderedCategorical, use AllowedValues to specify order
+    # NB currently if OrderedCategorical and no values, will pandas throw error?
+    categorical_fields = field_info.index[field_info['FieldType'].isin(['Categorical','OrderedCategorical'])]
+    for field in categorical_fields:
+        allowed_values = df.loc[allowedvalue_rows, field]
+        allowed_values = list(allowed_values[~allowed_values.isnull()])
+        #print("{} allowed values: {}".format(field,allowed_values))
+        kwargs = dict()
+        if len(allowed_values) > 0:
+            kwargs['categories'] = allowed_values
+        kwargs['ordered'] = (field_info.loc[field, 'FieldType'] == 'OrderedCategorical')
+        data[field] = data[field].astype('category', **kwargs)
 
     # Use sample IDs as index
     data.index = sample_ids
