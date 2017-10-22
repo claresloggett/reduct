@@ -115,7 +115,11 @@ def one_hot(series, categories=None):
 def pca_transform(data, field_info, max_pcs, scale=False):
     """
     Apply PCA to the data. There must be no missing values.
-    Return the pca object and the transformed data.
+    Returns a tuple containing:
+        the pca object,
+        the transformed data,
+        the labelled components, and
+        a dict mapping one-hot-encoded field names to original fields.
     """
     numeric_fieldspec = field_info['FieldType']=='Numeric'
     categorical_fields = data.columns[field_info['FieldType']=='Categorical']
@@ -128,9 +132,11 @@ def pca_transform(data, field_info, max_pcs, scale=False):
 
     # Encode any categorical fields, and concat results with numerical fields
     # For now, handling only unordered categories
+    encoded_field_list = [one_hot(data[field]) for field in categorical_fields]
     encoded = pd.concat([data.loc[:,numeric_fieldspec]] +
-                        [one_hot(data[field]) for field in categorical_fields],
+                        encoded_field_list,
                         axis=1)
+
     print("One-hot encoded data shape {}".format(encoded.shape))
     assert np.all(data.index==encoded.index)
 
@@ -140,4 +146,19 @@ def pca_transform(data, field_info, max_pcs, scale=False):
     transformed = pd.DataFrame(pca.fit_transform(encoded.as_matrix()), index=encoded.index)
     pca_names = ["PCA{}".format(n) for n in range(1,num_pcs+1)]
     transformed.columns = pca_names
-    return (pca, transformed)
+
+    # Store components with consistent naming scheme
+    components = pd.DataFrame(pca.components_.transpose())
+    components.columns = pca_names
+    components.index = encoded.columns
+    original_fields = {}
+    for field in data.columns[numeric_fieldspec]:
+        original_fields[field] = field
+    for (field,ef) in zip(categorical_fields,encoded_field_list):
+        for encoded_column in ef.columns:
+            original_fields[encoded_column] = field
+
+    # pca object, pca-transformed data, one-hot-encoded fieldnames, one-hot-encoded original fields
+    print(components)
+    print(original_fields)
+    return (pca, transformed, components, original_fields)#, list(encoded.columns))
