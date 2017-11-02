@@ -61,6 +61,7 @@ def static_file(path):
 #app.css.config.serve_locally = True
 app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
 app.css.append_css({'external_url': '/static_files/sidebar.css'})
+app.css.append_css({'external_url': '/static_files/pca_layout.css'})
 
 
 if args.show_fieldtable:
@@ -408,12 +409,12 @@ def update_pc_composition(x_field, y_field, stored_data):
     x_table_div = html.Div([
         html.Label([x_field]),
         html.Table(table_rows_x)],
-        style = {'display': 'inline-block', 'margin-left': 10, 'margin-right': 10})
+        className='pc_composition_table')
 
     y_table_div = html.Div([
         html.Label([y_field]),
         html.Table(table_rows_y)],
-        style = {'display': 'inline-block', 'margin-left': 10, 'margin-right': 10})
+        className='pc_composition_table')
 
     return([html.Label('Top fields in displayed PCs'),
             x_table_div,
