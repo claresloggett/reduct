@@ -159,6 +159,4 @@ def pca_transform(data, field_info, max_pcs, scale=False):
             original_fields[encoded_column] = field
 
     # pca object, pca-transformed data, one-hot-encoded fieldnames, one-hot-encoded original fields
-    print(components)
-    print(original_fields)
     return (pca, transformed, components, original_fields)#, list(encoded.columns))
