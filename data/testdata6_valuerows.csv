@@ -1,0 +1,14 @@
+RowType,SampleName,Group,x1,x2,x3,x4,c5,c6,c7
+ColumnType,RowID,RowInfo,Data,Data,Data,Data,Data,Data,Data
+DataType,,Categorical,Numeric,Numeric,Numeric,Numeric,Categorical,Categorical,OrderedCategorical
+AllowedValues,,,,,,,,0,none
+AllowedValues,,,,,,,,2,"some,but not really that much"
+AllowedValues,,,,,,,,4,some
+AllowedValues,,,,,,,,6,enormous amount
+AllowedValues,,,,,,,,8,
+Data,A,Group1,4,7,8,4,yes,2,some
+Data,B,Group1,2,4,6,2,no,2,lots
+Data,C,Group1,1,6,9,8,no,4,enormous amount
+Data,D,Group2,20,32,11,15,yes,4,"some,but not really that much"
+Data,E,Group2,72,11,0,5,yes,6,
+Data,F,Group2,21,88,88,30,yes,6,some

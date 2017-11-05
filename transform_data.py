@@ -3,7 +3,9 @@ import pandas as pd
 import numpy as np
 from sklearn.decomposition import PCA
 
-
+# TODO: decide when calling PCA whether to treat OrderedCategorical as
+#  unordered, or effectively numeric (but treat as categorical for colouring!).
+#  Currently it is treated as unordered.
 def complete_missing_data(data, field_info,
                           method='fill_values',
                           numeric_fill='mean',
@@ -54,7 +56,7 @@ def complete_missing_data(data, field_info,
 
         data_missing = data.isnull().sum() > 0
         numeric = field_info['FieldType']=='Numeric'
-        categorical = field_info['FieldType']=='Categorical'
+        categorical = field_info['FieldType'].isin(['OrderedCategorical','Categorical'])
         numeric_fields = data.columns[data_missing & numeric]
         categorical_fields = data.columns[data_missing & categorical]
 
@@ -77,6 +79,9 @@ def complete_missing_data(data, field_info,
                 # Make sure this value does not already exist in data
                 while new_value in data[field].unique():
                     new_value = new_value + "_"
+                # add_categories adds new unknown
+                # if we want to put it e.g. at start of ordering, may need set_categories
+                completed[field].cat.add_categories([new_value], inplace=True)
                 completed.loc[missing_values,field] = new_value
             elif categorical_fill=='unique_unknown':
                 print("Unique unknown")
@@ -84,6 +89,7 @@ def complete_missing_data(data, field_info,
                 # Make sure none of these values already exist in data
                 while data[field].isin(new_values).sum() > 0:
                     new_values = [v+"_" for v in new_values]
+                completed[field].cat.add_categories(new_values, inplace=True)
                 completed.loc[missing_values,field] = new_values
 
     else:
@@ -93,6 +99,8 @@ def complete_missing_data(data, field_info,
     #print(completed.head(10))
     return (completed, fields_kept, samples_kept)
 
+# TODO: one-hot encoding should now assume Categorical types are categoricals
+#  and use their categories rather than allowing a list to be supplied
 def one_hot(series, categories=None):
     """
     Given a series of M categorical values,
@@ -121,8 +129,9 @@ def pca_transform(data, field_info, max_pcs, scale=False):
         the labelled components, and
         a dict mapping one-hot-encoded field names to original fields.
     """
+    print("PCA was given data of shape {}".format(data.shape))
     numeric_fieldspec = field_info['FieldType']=='Numeric'
-    categorical_fields = data.columns[field_info['FieldType']=='Categorical']
+    categorical_fields = data.columns[field_info['FieldType'].isin(['OrderedCategorical','Categorical'])]
 
     if scale:
         # Subtracting mean should have no effect,
