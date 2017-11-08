@@ -1,5 +1,8 @@
 flask==0.12.2
 plotly==2.0.12
+pandas==0.20.3
+scipy==0.19.1
+scikit-learn==0.19.1
 dash==0.17.7
 dash-renderer==0.7.4
 dash-html-components==0.7.0
