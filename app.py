@@ -64,9 +64,19 @@ app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'
 app.css.append_css({'external_url': '/static_files/sidebar.css'})
 
 
+# *** Define UI and other layout elements ***
+
+hidden_data_div = html.Div(id='hidden_data_div',
+                           children="",
+                           style={'display':'none'})
+
+dummy_input = html.Div(id='dummy_input',
+              children=None,
+              style={'display':'none'})
+
 if args.show_fieldtable:
     # Create the fieldinfo table for selecting fields
-    fieldinfo_elements = [
+    fieldinfo_div = html.Div(id='fieldinfo_div',children=[
         html.Label('Include fields'),
         dash_table_experiments.DataTable(
             id='field_selector_table',
@@ -75,9 +85,9 @@ if args.show_fieldtable:
             row_selectable=True,
             sortable=True,
             selected_row_indices=list(range(len(field_info_table))) #by number, not df index
-        )]
+        )])
 else:
-    fieldinfo_elements = []
+    fieldinfo_div = html.Div(id='fieldinfo_div')
 
 starting_axes_dropdowns = [
     html.Label('X-axis'),
@@ -101,93 +111,99 @@ else:
     colour_fields = [{'label':'None','value':'NONE'}] + \
                     [{'label':val,'value':'SINF'+val} for val in list(sample_info.columns)]
 
-app.layout = html.Div(children=[
-    #html.H1(children='Data embedding'),
 
-    html.Div(id='sidebar',children=[
 
-        *fieldinfo_elements,
+general_plot_options = html.Div(id='general_plot_options',children=[
+    html.Label('Scale numeric fields', id='numericfields'),
+    dcc.RadioItems(
+        id='scale_selector',
+        options=[{'label':"Scale numeric fields to std=1", 'value':True},
+                 {'label':"Leave unscaled", 'value':False}],
+        value=False  # TODO: set default to True if any categorical fields?
+    ),
 
-        # children will be overwritten with stored data
-        html.Div(id='hidden_data_div',
-                 children="",
-                 style={'display':'none'}),
-
-        # Dummy input
-        html.Div(id='dummy_input',
-                 children=None,
-                 style={'display':'none'}),
-
-        html.Label('Scale numeric fields', id='numericfields'),
-        dcc.RadioItems(
-            id='scale_selector',
-            options=[{'label':"Scale numeric fields to std=1", 'value':True},
-                     {'label':"Leave unscaled", 'value':False}],
-            value=False  # TODO: set default to True if any categorical fields?
+    html.Div(id='missing_data', children=[
+        html.Label("Missing data:"),
+        dcc.RadioItems(id='missing_data_selector',
+            options=[{'label':"Drop fields with any missing values", 'value':'drop_fields'},
+                     {'label':"Drop samples with any missing values", 'value':'drop_samples'},
+                     {'label':"Fill missing values", 'value':'fill_values'}],
+            value='fill_values'
         ),
 
-        html.Div(id='missing_data',
-        children=[
-            html.Label("Missing data:"),
-            dcc.RadioItems(id='missing_data_selector',
-                options=[{'label':"Drop fields with any missing values", 'value':'drop_fields'},
-                         {'label':"Drop samples with any missing values", 'value':'drop_samples'},
-                         {'label':"Fill missing values", 'value':'fill_values'}],
-                value='fill_values'
+        html.Div(id='missing_fill_selectors', children=[
+            html.Label(children="Missing value fill in numeric fields:", id='missing_numeric_label'),
+            dcc.RadioItems(id='missing_numeric_fill',
+                options=[{'label':"Replace with zero", 'value':'zeroes'},
+                         {'label':"Replace with mean value for field", 'value':'mean'}],
+                value='mean'
             ),
 
-            html.Div(id='missing_fill_selectors',
-                children=[
-                html.Label(children="Missing value fill in numeric fields:", id='missing_numeric_label'),
-                dcc.RadioItems(id='missing_numeric_fill',
-                    options=[{'label':"Replace with zero", 'value':'zeroes'},
-                             {'label':"Replace with mean value for field", 'value':'mean'}],
-                    value='mean'
-                ),
-
-                html.Label("Missing value fill in categorical fields:", id='missing_categorical_label'),
-                dcc.RadioItems(id='missing_categorical_fill',
-                    options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
-                             {'label':"Replace with unique category per sample",# - this can stop unknowns clustering",
-                              'value':'unique_unknown'}],
-                    value='common_unknown'
-                )]
+            html.Label("Missing value fill in categorical fields:", id='missing_categorical_label'),
+            dcc.RadioItems(id='missing_categorical_fill',
+                options=[{'label':"Replace with 'Unknown'", 'value':'common_unknown'},
+                         {'label':"Replace with unique category per sample",# - this can stop unknowns clustering",
+                          'value':'unique_unknown'}],
+                value='common_unknown'
             )
-        ]),
+        ])
+    ])
+])
 
-        html.Div(id='axis_component_selectors',
-                 children=starting_axes_dropdowns
-        ),
+pca_axes_selectors = html.Div(id='pca_axes_selectors', children=starting_axes_dropdowns)
 
-        html.Label('Colour points by'),
-        dcc.Dropdown(
-            id='colour_dropdown',
-            options = colour_fields,
-            value='NONE'
-        ),
+colour_selector = html.Div(id='colour_selector', children=[
+    html.Label('Colour points by'),
+    dcc.Dropdown(
+        id='colour_dropdown',
+        options = colour_fields,
+        value='NONE'
+    )
+])
 
-        html.Div(id='lower_padding'),
+data_info = dcc.Markdown(id='data_info',
+    children="""File {0}, {2} fields, {1} samples total""".format(os.path.basename(args.infile),
+                                                                     *data.shape))
 
+# No figure - will be generated by callback
+main_plot = dcc.Graph( id='main_plot', animate=True)
+
+pca_extra_stuff = html.Div(id='pca_extra_stuff',children=[
+    dcc.Graph(id='pc_composition')
+])
+
+# *** Define page layouts ***
+
+pca_page_layout = [
+    html.Div(id='sidebar',children=[
+        fieldinfo_div,
+        general_plot_options,
+        pca_axes_selectors,
+        colour_selector,
+        html.Div(id='lower_padding')
     ]),
 
     html.Div(id='main_content',children=[
-
-        dcc.Markdown(id='data_info',
-            children="""File {0}, {2} fields, {1} samples total""".format(os.path.basename(args.infile),
-                                                                             *data.shape)
-        ),
-        dcc.Graph(
-            id='pca_plot',  # No figure - will be generated by callback
-            animate=True
-        ),
-        dcc.Graph(
-            id='pc_composition'
-        )
+        hidden_data_div,
+        dummy_input,
+        data_info,
+        main_plot,
+        pca_extra_stuff
     ])
+]
 
+
+# *** Top-level app layout ***
+
+app.layout = html.Div(children=[
+
+    html.Div(id='page_contents',
+             children = pca_page_layout
+    )
 ])
 
-# Build input list for update_pca dynamically, based on available selectors
+
+# Build input list for update_pca dynamically, based on available selectors at launch
 pca_input_components = [Input('scale_selector','value'),
                         Input('missing_data_selector','value'),
                         Input('missing_numeric_fill','value'),
@@ -236,9 +252,9 @@ def update_pca(scale, missing_data_method, numeric_fill, categorical_fill, selec
                        'original_fields': original_fields})
 
 @app.callback(
-    Output('axis_component_selectors','children'),
+    Output('pca_axes_selectors','children'),
     [Input('hidden_data_div','children')],
-    state=[State('x_dropdown','value'), State('y_dropdown','value')]
+    state=[State('x_dropdown','value'), State('y_dropdown','value')] # previous state
 )
 def update_pca_axes(transformed_data_json, previous_x, previous_y):
     """
@@ -276,7 +292,7 @@ def update_pca_axes(transformed_data_json, previous_x, previous_y):
     return new_html
 
 @app.callback(
-    Output('pca_plot','figure'),
+    Output('main_plot','figure'),
     [Input('x_dropdown','value'), Input('y_dropdown','value'),
      Input('colour_dropdown','value')],
     state=[State('hidden_data_div', 'children')]
@@ -434,7 +450,6 @@ def update_pc_composition(x_field, y_field, stored_data):
                                height=300)
 
     return pc_graphs
-
 
 
 @app.callback(
