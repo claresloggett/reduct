@@ -1,0 +1,67 @@
+
+html, body {
+  width: 100%;
+  height: 100%;
+}
+
+#header_bar {
+  height: 50px;
+  background: #88a09e;
+  margin: 0px 0px 0px 0px;
+  border: 0;
+  padding: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+#app_label_box {
+  display: flex;
+  width: 300px;
+  height: 50px;
+  margin: 0px 0px 0px 0px;
+  justify-content: center;
+  align-items: center;
+}
+
+#tabs {
+  display: inline-block;
+  position: absolute;
+  margin-left: 300px;
+  bottom: 0;
+}
+
+.nav-tabs a {
+  color: black;
+}
+
+#sidebar {
+  width: 300px;
+  margin-top: 50px;
+  margin-bottom: 100px;
+  height: calc(100% - 50px);
+  position: fixed;
+  overflow-y: scroll;
+  float: left;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  padding: 5px;
+  background: #cedbdd;
+}
+
+#sidebar #lower_padding {
+  height: 200px;
+}
+
+#main_content {
+  margin-left: 300px;
+  margin-top: 50px;
+  margin-bottom: 100px;
+  height: calc(100% - 50px);
+  width: calc(100% - 300px);
+  padding: 20px;
+  position: fixed;
+  overflow: scroll;
+}

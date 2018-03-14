@@ -50,7 +50,7 @@ field_info_table['Field'] = field_info_table.index
 
 app = dash.Dash()
 
-app.scripts.config.serve_locally = True
+#app.scripts.config.serve_locally = True
 
 # app.server is the flask app
 # in current dash version, static as path won't work?
@@ -60,9 +60,14 @@ def static_file(path):
     return flask.send_from_directory(os.path.join(app_dir,'static'), path)
 
 #app.css.config.serve_locally = True
-app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
-app.css.append_css({'external_url': '/static_files/sidebar.css'})
+#app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
+app.css.append_css({"external_url": "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"})
+app.css.append_css({"external_url": "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css"})
+app.css.append_css({'external_url': '/static_files/app_layout.css'})
 
+app.scripts.append_script({'external_url': 'http://code.jquery.com/jquery-3.3.1.min.js'})
+app.scripts.append_script({'external_url': '/static_files/bootstrap_workaround.js'})
+app.scripts.append_script({'external_url': 'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js'})
 
 # *** Define UI and other layout elements ***
 
@@ -172,34 +177,57 @@ pca_extra_stuff = html.Div(id='pca_extra_stuff',children=[
     dcc.Graph(id='pc_composition')
 ])
 
-# *** Define page layouts ***
-
-pca_page_layout = [
-    html.Div(id='sidebar',children=[
-        fieldinfo_div,
-        general_plot_options,
-        pca_axes_selectors,
-        colour_selector,
-        html.Div(id='lower_padding')
-    ]),
-
-    html.Div(id='main_content',children=[
-        hidden_data_div,
-        dummy_input,
-        data_info,
-        main_plot,
-        pca_extra_stuff
-    ])
-]
-
+def define_tab_li(id, target, text, active=False):
+    # class data-toggle-tab is hooked by our dash bootstrap workaround js
+    classes = "nav-link data-toggle-tab"
+    if active:
+        classes += " active"
+    return html.Li(className="nav-item", children=[
+                html.A(id=id,
+                       className=classes,
+                       href=target,
+                       children=text)
+                ])
 
 # *** Top-level app layout ***
 
 app.layout = html.Div(children=[
 
-    html.Div(id='page_contents',
-             children = pca_page_layout
-    )
+    hidden_data_div,
+    dummy_input,
+
+    html.Div(id='header_bar', children=[
+        html.Div(id='app_label_box',children=[
+            html.Label('reduct', id='app_name')
+            ]),
+        #  plot_type_selector
+        html.Ul(id='tabs',className="nav nav-tabs",children=[
+            define_tab_li(id="pca_tab", target="#pca_panel", text="PCA", active=True),
+            define_tab_li(id="mds_tab", target="#mds_panel", text="MDS")
+        ])
+    ]),
+
+    html.Div(id='sidebar',children=[
+        fieldinfo_div,
+        general_plot_options,
+        colour_selector,
+        html.Div(id='lower_padding')
+    ]),
+
+    html.Div(id='main_content',className='tab-content',children=[
+        html.Div(id='pca_panel', className='tab-pane', children=[
+            data_info,
+            pca_axes_selectors,
+            main_plot,
+            pca_extra_stuff
+        ]),
+        html.Div(id='mds_panel', className='tab-pane', children=[
+            data_info,
+            html.Div(children="This is the MDS plot, no really"),
+            main_plot,
+            pca_extra_stuff
+        ]),
+    ])
 ])
 
 
