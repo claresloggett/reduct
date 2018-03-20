@@ -55,6 +55,11 @@ html, body {
   height: 200px;
 }
 
+#pca_axes_selectors > div {
+  style: inline-block;
+  width: 50%;
+}
+
 #main_content {
   margin-left: 300px;
   margin-top: 50px;
