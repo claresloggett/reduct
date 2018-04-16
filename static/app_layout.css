@@ -57,7 +57,8 @@ html, body {
 
 #pca_axes_selectors > div {
   style: inline-block;
-  width: 50%;
+  width: 45%;
+  position: relative;
 }
 
 #main_content {
