@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.manifold import MDS
 
 # TODO: decide when calling PCA whether to treat OrderedCategorical as
 #  unordered, or effectively numeric (but treat as categorical for colouring!).
@@ -74,7 +75,7 @@ def complete_missing_data(data, field_info,
             print("Filling in missing values in "+field)
             missing_values = data[field].isnull()
             if categorical_fill=='common_unknown':
-                print("Common unknown")
+                #print("Common unknown")
                 new_value = 'Unknown'
                 # Make sure this value does not already exist in data
                 while new_value in data[field].unique():
@@ -84,7 +85,7 @@ def complete_missing_data(data, field_info,
                 completed[field].cat.add_categories([new_value], inplace=True)
                 completed.loc[missing_values,field] = new_value
             elif categorical_fill=='unique_unknown':
-                print("Unique unknown")
+                #print("Unique unknown")
                 new_values = ["Unknown{}".format(n+1) for n in range(missing_values.sum())]
                 # Make sure none of these values already exist in data
                 while data[field].isin(new_values).sum() > 0:
@@ -120,16 +121,15 @@ def one_hot(series, categories=None):
     encoded.index = vec.index
     return encoded
 
-def pca_transform(data, field_info, max_pcs, scale=False):
+def preprocess(data, field_info, scale):
     """
-    Apply PCA to the data. There must be no missing values.
-    Returns a tuple containing:
-        the pca object,
-        the transformed data,
-        the labelled components, and
-        a dict mapping one-hot-encoded field names to original fields.
+    Apply pre-processing to data:
+     - scaling of numeric fields
+     - binary encoding of categorical fields
+
+    Return preprocessed dataframe, and dict mapping encoded fieldnames
+    to original fieldnames.
     """
-    print("PCA was given data of shape {}".format(data.shape))
     numeric_fieldspec = field_info['FieldType']=='Numeric'
     categorical_fields = data.columns[field_info['FieldType'].isin(['OrderedCategorical','Categorical'])]
 
@@ -149,6 +149,29 @@ def pca_transform(data, field_info, max_pcs, scale=False):
     print("One-hot encoded data shape {}".format(encoded.shape))
     assert np.all(data.index==encoded.index)
 
+    original_fields = {}
+    for field in data.columns[numeric_fieldspec]:
+        original_fields[field] = field
+    for (field,ef) in zip(categorical_fields,encoded_field_list):
+        for encoded_column in ef.columns:
+            original_fields[encoded_column] = field
+
+    return (encoded, original_fields)
+
+
+def pca_transform(data, field_info, max_pcs, scale=False):
+    """
+    Apply PCA to the data. There must be no missing values.
+    Returns a tuple containing:
+        the pca object,
+        the transformed data,
+        the labelled components, and
+        a dict mapping one-hot-encoded field names to original fields.
+    """
+    print("PCA was given data of shape {}".format(data.shape))
+
+    encoded, original_fields = preprocess(data, field_info, scale)
+
     # Do PCA
     num_pcs = min(max_pcs, encoded.shape[1], encoded.shape[0])
     pca = PCA(num_pcs)
@@ -160,12 +183,23 @@ def pca_transform(data, field_info, max_pcs, scale=False):
     components = pd.DataFrame(pca.components_.transpose())
     components.columns = pca_names
     components.index = encoded.columns
-    original_fields = {}
-    for field in data.columns[numeric_fieldspec]:
-        original_fields[field] = field
-    for (field,ef) in zip(categorical_fields,encoded_field_list):
-        for encoded_column in ef.columns:
-            original_fields[encoded_column] = field
 
     # pca object, pca-transformed data, one-hot-encoded fieldnames, one-hot-encoded original fields
     return (pca, transformed, components, original_fields)#, list(encoded.columns))
+
+def mds_transform(data, field_info, scale=False):
+    """
+    Apply distance-based MDS to the data. There must be no missing values.
+    Returns a tuple containing:
+        the mds object,
+        the transformed data, and
+        a dict mapping one-hot-encoded field names to original fields.
+    """
+    # Preprocess data
+    encoded, original_fields = preprocess(data, field_info, scale)
+
+    mds = MDS(2)
+    transformed = pd.DataFrame(pca.fit_transform(encoded.as_matrix()), index=encoded.index)
+    transformed.columns = ['MDS dim A','MDS dim B']
+
+    return (mds, transformed, original_fields)
