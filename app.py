@@ -62,8 +62,6 @@ def static_file(path):
 #app.css.config.serve_locally = True
 #app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
 
-app.scripts.append_script({'external_url': '/static_files/bootstrap_workaround.js'})
-
 app.css.append_css({"external_url": "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"})
 app.css.append_css({"external_url": "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css"})
 app.css.append_css({'external_url': '/static_files/app_layout.css'})
@@ -195,15 +193,16 @@ pca_extra_stuff = html.Div(id='pca_extra_stuff',children=[
 ])
 
 def define_tab_li(id, target, text, active=False):
-    # class data-toggle-tab is hooked by our dash bootstrap workaround js
-    classes = "nav-link data-toggle-tab"
+    classes = "nav-link"
     if active:
         classes += " active"
-    return html.Li(className="nav-item", children=[
+    return html.Li(className="nav-item", 
+                children=[
                 html.A(id=id,
                        className=classes,
-                       href=target,
-                       children=text)
+                       href='#'+target,
+                       children=text,
+                       **{'data-toggle': 'tab'})
                 ])
 
 # *** Top-level app layout ***
