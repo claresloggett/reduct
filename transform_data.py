@@ -199,7 +199,7 @@ def mds_transform(data, field_info, scale=False):
     encoded, original_fields = preprocess(data, field_info, scale)
 
     mds = MDS(2)
-    transformed = pd.DataFrame(pca.fit_transform(encoded.as_matrix()), index=encoded.index)
+    transformed = pd.DataFrame(mds.fit_transform(encoded.as_matrix()), index=encoded.index)
     transformed.columns = ['MDS dim A','MDS dim B']
 
     return (mds, transformed, original_fields)
