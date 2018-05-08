@@ -237,13 +237,13 @@ app.layout = html.Div(children=[
 
     html.Div(id='main_content',className='tab-content',children=[
         html.Div(id='pca_panel', className='tab-pane', children=[
-            data_info(),
+            #data_info(),
             pca_axes_selectors,
             pca_plot,
             pca_extra_stuff
         ]),
         html.Div(id='mds_panel', className='tab-pane', children=[
-            data_info(),
+            #data_info(),
             mds_plot
         ]),
     ])

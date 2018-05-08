@@ -56,9 +56,10 @@ html, body {
 }
 
 #pca_axes_selectors > div {
-  style: inline-block;
+  display: inline-block;
+  margin-right: 10px;
   width: 45%;
-  position: relative;
+  /*position: relative;*/
 }
 
 #main_content {
@@ -70,4 +71,8 @@ html, body {
   padding: 20px;
   position: fixed;
   overflow: scroll;
+}
+
+input[type="radio"] {
+  margin-right: 4px;
 }
