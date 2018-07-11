@@ -204,7 +204,9 @@ pca_extra_stuff = html.Div(id='pca_extra_stuff',children=[
 tsne_controls = html.Div(id='tsne_controls',children=[
     html.Div([
         html.Label("Perplexity: ", style={'display':'inline-block'}),
-        dcc.Slider(min=1, max=100, step=1, value=30, id='tsne_perplexity_slider'),
+        dcc.Slider(id='tsne_perplexity_slider',
+                   min=1, max=100, step=1, value=30,
+                   marks = {n:str(n) for n in [1,20,40,60,80,100]}),
     ]),
     html.Button('Recalculate tSNE', id='tsne_button')
 ])

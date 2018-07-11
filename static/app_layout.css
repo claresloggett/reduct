@@ -73,6 +73,19 @@ html, body {
   overflow: scroll;
 }
 
+#tsne_perplexity_slider {
+  width: 500px;
+  display: inline-block;
+}
+
+
+#tsne_button {
+  margin-top: 50px;
+  margin-left: 20px;
+  /*margin: auto;
+  display: block;*/
+}
+
 input[type="radio"] {
   margin-right: 4px;
 }
