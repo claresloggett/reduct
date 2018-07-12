@@ -437,13 +437,63 @@ def update_pca_axes(transformed_data_json, previous_x, previous_y):
 def update_pca_plot(x_field, y_field, colour_field_selection, stored_data):
     # If storing transformed data this way, ought to memoise PCA calculation
     print("Updating PCA figure")
+
+    figure = create_plot(x_field=x_field,
+                         y_field=y_field,
+                         stored_data=stored_data,
+                         colour_field_selection=colour_field_selection,
+                         plot_title='PCA',
+                         xaxis_label=x_field,
+                         yaxis_label=y_field)
+
+    return figure
+
+@app.callback(
+    Output('mds_plot','figure'),
+    [Input('hidden_data_mds', 'children'), Input('colour_dropdown','value')]
+)
+def update_mds_plot(stored_data, colour_field_selection):
+    # If storing transformed data this way, ought to memoise PCA calculation
+    print("Updating MDS figure")
+
+    figure = create_plot(x_field='MDS dim A',
+                         y_field='MDS dim B',
+                         stored_data=stored_data,
+                         colour_field_selection=colour_field_selection,
+                         plot_title='MDS',
+                         xaxis_label='MDS dim A',
+                         yaxis_label='MDS dim B')
+
+    return figure
+
+@app.callback(
+    Output('tsne_plot','figure'),
+    [Input('hidden_data_tsne', 'children'), Input('colour_dropdown','value')]
+)
+def update_tsne_plot(stored_data, colour_field_selection):
+    # If storing transformed data this way, ought to memoise calculation
+    print("Updating tSNE figure")
+
+    figure = create_plot(x_field='A',
+                         y_field='B',
+                         stored_data=stored_data,
+                         colour_field_selection=colour_field_selection,
+                         plot_title='tSNE',
+                         xaxis_label='tSNE dim A',
+                         yaxis_label='tSNE dim B')
+
+    return figure
+
+def create_plot(x_field, y_field, stored_data, colour_field_selection,
+                plot_title, xaxis_label, yaxis_label):
+    """
+    Create a scatter plot based on already-transformed data.
+    Returns the figure.
+    """
     # Don't try to calculate plot if UI controls not initialised yet
     # Note that we must however return a valid figure specification
     if stored_data=="":
         print("Data not initialised yet; skipping figure callback")
-        return {'data': [], 'layout': {'title': 'Calculating plot...'}}
-    if x_field is None or y_field is None:
-        print("Axes dropdowns not initialised yet; skipping figure callback")
         return {'data': [], 'layout': {'title': 'Calculating plot...'}}
     transformed = pd.read_json(json.loads(stored_data)['transformed'], orient='split')
     print("Plotting {} points".format(len(transformed)))
@@ -513,189 +563,14 @@ def update_pca_plot(x_field, y_field, colour_field_selection, stored_data):
     figure = {
         'data': traces,
         'layout': {
-            'title': 'PCA',
-            'xaxis': {'title': x_field},
-            'yaxis': {'title': y_field},
+            'title': plot_title,
+            'xaxis': {'title': xaxis_label},
+            'yaxis': {'title': yaxis_label},
             'hovermode': 'closest',
         }
     }
     return figure
 
-@app.callback(
-    Output('mds_plot','figure'),
-    [Input('hidden_data_mds', 'children'), Input('colour_dropdown','value')]
-)
-def update_mds_plot(stored_data, colour_field_selection):
-    # If storing transformed data this way, ought to memoise PCA calculation
-    print("Updating MDS figure")
-    # Don't try to calculate plot if UI controls not initialised yet
-    # Note that we must however return a valid figure specification
-    if stored_data=="":
-        print("Data not initialised yet; skipping figure callback")
-        return {'data': [], 'layout': {'title': 'Calculating plot...'}}
-    transformed = pd.read_json(json.loads(stored_data)['transformed'], orient='split')
-    print("Plotting {} points".format(len(transformed)))
-    # In case we dropped any samples during transformation
-    sample_info_used = sample_info.loc[transformed.index,:]
-
-    # Show sample ID on hover
-    hover_text = transformed.index
-    if args.hover_sampleinfo:
-        # Show sample info fields on hover
-        hover_text = hover_text.str.cat([sample_info_used[field].apply(lambda v:"{}={}".format(field,v))
-                                         for field in sample_info_used.columns],
-                                         sep=' | ')
-    if args.hover_data:
-        # Show data values on hover. Will include deselected fields and filtered fields.
-        data_used = data.loc[transformed.index,:]
-        hover_text = hover_text.str.cat([data_used[field].apply(lambda v:"{}={}".format(field,v))
-                                         for field in data_used.columns],
-                                         sep=' | ')
-
-    colour_field_source, colour_field = colour_field_selection[:4], colour_field_selection[4:]
-    if colour_field_source == 'NONE':
-        # No colouring
-        traces = [go.Scatter(x=transformed['MDS dim A'], y=transformed['MDS dim B'],
-                  mode='markers', marker=dict(size=10, opacity=0.7),
-                  text=hover_text)]
-    else:
-        # Colour by colour field
-        if colour_field_source=='SINF':
-            colour_values = sample_info_used[colour_field]
-            colour_field_type = sample_info_types.loc[colour_field,'InfoType']
-        else:
-            assert colour_field_source=='DATA'
-            colour_values = data.loc[transformed.index,colour_field]
-            colour_field_type = field_info.loc[colour_field,'FieldType']
-        # Use continuous colour scale if Numeric, and discrete if Categorical
-        if colour_field_type=='Numeric':
-            #colour_values[ colour_values.isnull() ] = 0  # better to let plotly handle
-            traces = [go.Scatter(x=transformed['MDS dim A'], y=transformed['MDS dim B'],
-                      mode='markers',
-                      marker=dict(size=10, opacity=0.7,
-                                  color=colour_values,
-                                  showscale=True),
-                      text=hover_text)]
-        else:
-            # Treat colour as a categorical field
-            # Make separate traces to get colours and a legend
-            assert colour_field_type in ['Categorical','OrderedCategorical']
-            traces = []
-            # points with missing values
-            if colour_values.isnull().sum() > 0:
-                rows = colour_values.isnull()
-                traces.append(go.Scatter(x=transformed.loc[rows,'MDS dim A'], y=transformed.loc[rows,'MDS dim B'],
-                              mode='markers', marker=dict(size=10, opacity=0.7),
-                              name='Unknown', text=hover_text[rows]))
-            # points with a colour field value - in category order if pandas category, else sorted
-            if pd.core.common.is_categorical_dtype(colour_values):
-                unique_colour_values = colour_values.cat.categories
-            else:
-                unique_colour_values = sorted(colour_values.unique(), key=lambda x:str(x))
-            for value in unique_colour_values:
-                rows = colour_values == value
-                traces.append(go.Scatter(x=transformed.loc[rows,'MDS dim A'], y=transformed.loc[rows,'MDS dim B'],
-                              mode='markers', marker=dict(size=10, opacity=0.7),
-                              name=value, text=hover_text[rows]))
-
-    figure = {
-        'data': traces,
-        'layout': {
-            'title': 'MDS',
-            'xaxis': {'title': 'MDS dim A'},
-            'yaxis': {'title': 'MDS dim B'},
-            'hovermode': 'closest',
-        }
-    }
-    return figure
-
-@app.callback(
-    Output('tsne_plot','figure'),
-    [Input('hidden_data_tsne', 'children'), Input('colour_dropdown','value')]
-)
-def update_tsne_plot(stored_data, colour_field_selection):
-    # If storing transformed data this way, ought to memoise calculation
-    print("Updating tSNE figure")
-    # Don't try to calculate plot if UI controls not initialised yet
-    # Note that we must however return a valid figure specification
-    if stored_data=="":
-        print("Data not initialised yet; skipping figure callback")
-        return {'data': [], 'layout': {'title': 'Calculating plot...'}}
-    transformed = pd.read_json(json.loads(stored_data)['transformed'], orient='split')
-    print("Plotting {} points".format(len(transformed)))
-    # In case we dropped any samples during transformation
-    sample_info_used = sample_info.loc[transformed.index,:]
-
-    # Show sample ID on hover
-    hover_text = transformed.index
-    if args.hover_sampleinfo:
-        # Show sample info fields on hover
-        hover_text = hover_text.str.cat([sample_info_used[field].apply(lambda v:"{}={}".format(field,v))
-                                         for field in sample_info_used.columns],
-                                         sep=' | ')
-    if args.hover_data:
-        # Show data values on hover. Will include deselected fields and filtered fields.
-        data_used = data.loc[transformed.index,:]
-        hover_text = hover_text.str.cat([data_used[field].apply(lambda v:"{}={}".format(field,v))
-                                         for field in data_used.columns],
-                                         sep=' | ')
-
-    colour_field_source, colour_field = colour_field_selection[:4], colour_field_selection[4:]
-    if colour_field_source == 'NONE':
-        # No colouring
-        traces = [go.Scatter(x=transformed['A'], y=transformed['B'],
-                  mode='markers', marker=dict(size=10, opacity=0.7),
-                  text=hover_text)]
-    else:
-        # Colour by colour field
-        if colour_field_source=='SINF':
-            colour_values = sample_info_used[colour_field]
-            colour_field_type = sample_info_types.loc[colour_field,'InfoType']
-        else:
-            assert colour_field_source=='DATA'
-            colour_values = data.loc[transformed.index,colour_field]
-            colour_field_type = field_info.loc[colour_field,'FieldType']
-        # Use continuous colour scale if Numeric, and discrete if Categorical
-        if colour_field_type=='Numeric':
-            #colour_values[ colour_values.isnull() ] = 0  # better to let plotly handle
-            traces = [go.Scatter(x=transformed['A'], y=transformed['B'],
-                      mode='markers',
-                      marker=dict(size=10, opacity=0.7,
-                                  color=colour_values,
-                                  showscale=True),
-                      text=hover_text)]
-        else:
-            # Treat colour as a categorical field
-            # Make separate traces to get colours and a legend
-            assert colour_field_type in ['Categorical','OrderedCategorical']
-            traces = []
-            # points with missing values
-            if colour_values.isnull().sum() > 0:
-                rows = colour_values.isnull()
-                traces.append(go.Scatter(x=transformed.loc[rows,'A'], y=transformed.loc[rows,'B'],
-                              mode='markers', marker=dict(size=10, opacity=0.7),
-                              name='Unknown', text=hover_text[rows]))
-            # points with a colour field value - in category order if pandas category, else sorted
-            if pd.core.common.is_categorical_dtype(colour_values):
-                unique_colour_values = colour_values.cat.categories
-            else:
-                unique_colour_values = sorted(colour_values.unique(), key=lambda x:str(x))
-            for value in unique_colour_values:
-                rows = colour_values == value
-                traces.append(go.Scatter(x=transformed.loc[rows,'A'], y=transformed.loc[rows,'B'],
-                              mode='markers', marker=dict(size=10, opacity=0.7),
-                              name=value, text=hover_text[rows]))
-
-    figure = {
-        'data': traces,
-        'layout': {
-            'title': 'tSNE',
-            'xaxis': {'title': 'tSNE dim A'},
-            'yaxis': {'title': 'tSNE dim B'},
-            'hovermode': 'closest',
-        }
-    }
-    return figure
 
 @app.callback(
     Output('pc_composition','figure'),
