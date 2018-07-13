@@ -2,16 +2,14 @@
 Reduct
 ======
 
-An app for visualising high-dimensional data via interactive embedding (for now, PCA).
+An app for visualising high-dimensional data via interactive embedding.
 Uses Plotly Dash.
 
 In experimental development.
 
-Follow Dash installation instructions at https://plot.ly/dash/getting-started.
+To install, create an environment and `pip install -r requirements.txt`
 
-Also requires https://github.com/plotly/dash-table-experiments :
-
-```pip install dash-table-experiments```
+For latest versions of packages, follow Dash installation instructions at https://plot.ly/dash/getting-started. These default versions of Dash currently won't work with reduct as we are using features from a release candidate.
 
 See usage with
 
