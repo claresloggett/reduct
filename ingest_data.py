@@ -1,108 +1,128 @@
 
 import pandas as pd
+import numpy as np
+from pandas.core.dtypes.common import _get_dtype_from_object
+
+def matches_dtypes(df, dtypes):
+    """
+    Return Series that is True where dtype of column matches given dtypes.
+    Returns a Series with index matching df.columns.
+    dtypes must be an iterable of type specifications.
+    Copies match logic from pandas.DataFrame.select_dtypes();
+    use same type specifications:
+    * To select all *numeric* types use the numpy dtype ``numpy.number``
+    * To select strings you must use the ``object`` dtype, but note that
+      this will return *all* object dtype columns
+    * See the `numpy dtype hierarchy
+      <http://docs.scipy.org/doc/numpy/reference/arrays.scalars.html>`__
+    * To select datetimes, use np.datetime64, 'datetime' or 'datetime64'
+    * To select timedeltas, use np.timedelta64, 'timedelta' or
+      'timedelta64'
+    * To select Pandas categorical dtypes, use 'category'
+    * To select Pandas datetimetz dtypes, use 'datetimetz' (new in 0.20.0),
+      or a 'datetime64[ns, tz]' string
+    """
+    dtypes = list(map(_get_dtype_from_object, dtypes))
+    boolean_list = [any([issubclass(coltype.type,t) for t in dtypes])
+                     for (column,coltype) in df.dtypes.iteritems()]
+    return pd.Series(boolean_list, index=df.columns)
+
+# Guess unknown datatypes
+# For now, if it's not numeric, it's categorical
+# For now, just use pandas' guess at dtype
+def guess_datatypes(df, known_datatypes=None):
+    """
+    Where known_datatypes is '', fill in with guessed datatypes.
+    Return Series of resulting datatypes.
+    Will be identical to known_datatypes if all datatypes were specified.
+    """
+    ALLOWED_VALUES = {'N','Q',''}
+    if known_datatypes is None:
+        known_datatypes = ['']*df.shape[1]
+    print(str(list(known_datatypes)))
+    if len(set(known_datatypes) - ALLOWED_VALUES) > 0:
+        raise ValueError("Unrecognised datatypes: {}".format(set(known_datatypes) - ALLOWED_VALUES))
+
+    datatypes = pd.Series(known_datatypes, index=df.columns)
+    unknown = [t=='' for t in known_datatypes]
+    looks_numeric = matches_dtypes(df, [np.number])
+    # for now either numeric or categorical
+    looks_categorical = ~looks_numeric
+    datatypes[unknown & looks_numeric] = 'Q'
+    datatypes[unknown & looks_categorical] = 'N'
+    return datatypes
+
+def split_typespec(colname):
+    '''Split column name into fieldname and typespec'''
+    if ':' in colname:
+        pieces = colname.split(':')
+        return (':'.join(pieces[:-1]),pieces[-1])
+    else:
+        return (colname,'')
+
+def extract_specs(spec, codes="NQ", assert_single=True):
+    '''Extract only certain single-letter codes from a field'''
+    values = [v for v in spec if v in codes]
+    if assert_single and len(values)>1:
+        raise ValueError("More than one type specifier supplied to field: {}".format(spec))
+    if len(values)==0:
+        return ''
+    else:
+        return values[0]
 
 def parse_input(infile, separator):
     """
     Parse input data from CSV file.
     Split sample and field info from actual data.
     The first row must be the header row, with column names.
-    RowType is considered a reserved column name.
-    Recognised RowType values are ColumnType, DataType, FieldInfo, Data.
-    If RowType column does not exist, all rows are assumed to be Data, except
-    the header (first) row.
-    Recognised ColumnType values are RowID, RowInfo, and Data.
-    If ColumnType row does not exist, all columns are assumed to be Data, except
-    the RowType column.
-    Recognised DataType values are Numeric, Categorical,
-    and OrderedCategorical.
-    If DataType row does not exist, all columns are assumed to be Numeric, except
-    the RowType column.
-    Both FieldInfo and Data columns can have DataTypes specified.
+    Suffixes to variable names, split by : , will be interpreted
+    as datatypes, altair-style.
+    Recognised codes are:
+      N : Nominal
+      Q : Quantitative
+    (datetimes, ordinal datatypes TBD)
+    A code may also be added for the role of the field.
+    Recognised codes are:
+      I : Identifier - will not be treated as data for dim reducion,
+                       and will be displayed by default on mouseover
+    (M TBD for both fields and rows)
+
     Return (data, sample_info, sample_info_types, field_info).
     """
-    print("Reading "+infile)
-    df = pd.read_csv(infile, sep=separator, header=0, dtype=object)
+    print("Reading "+str(infile))
+    df = pd.read_csv(infile, sep=separator, header=0)
 
-    print("Checking for master columns/rows")
+    fieldnames, typespecs = zip(*[split_typespec(col) for col in df.columns])
+    typespecs = pd.Series(typespecs, index=fieldnames)
+    df.columns = fieldnames
+    #print('typespecs',typespecs)
+    is_index = typespecs.str.contains('I')
+    is_metadata = typespecs.str.contains('M')
+    is_data = ~(is_index | is_metadata)
+    #print(is_index,is_metadata,is_data)
 
-    # Check for RowType column and get special rows
-    if 'RowType' in df.columns:
-        data_rows = df.index[df['RowType']=='Data']
-        fieldinfo_rows = df.index[df['RowType']=='FieldInfo']
-        columntype_row = df.index[df['RowType']=='ColumnType']
-        datatype_row = df.index[df['RowType']=='DataType']
-        allowedvalue_rows = df.index[df['RowType']=='AllowedValues']
-    else:
-        print("No RowType column in input data; assuming all rows are data.")
-        data_rows = df.index
-        fieldinfo_rows = []
-        columntype_row = []
-        datatype_row = []
-        allowedvalue_rows = []
+    data_rows = df.index
+    data_columns = df.columns[is_data]
 
-    # Check for ColumnType row
-    if len(columntype_row) > 1:
-        raise ValueError("More than one ColumnType row in input data.")
-    elif len(columntype_row) == 0:
-        print("No ColumnType row in input data; assuming all columns data fields, unless named RowType.")
-        data_columnspec = df.columns != 'RowType'
-        columntypes = pd.Series(index=df.columns)
-        columntypes[data_columnspec] = 'Data'
-        #data_columns = df.columns[data_columnspec]
-    else:
-        # There is a ColumnType row
-        assert len(columntype_row) == 1
-        columntypes = df.loc[columntype_row,:].iloc[0]
-        data_columnspec = columntypes == 'Data'
-        #data_columns = df.columns[data_columnspec]
+    print("Checking for index and metadata")
 
-    # Check for DataType row
-    if len(datatype_row) > 1:
-        raise ValueError("More than one DataType row in input data.")
-    elif len(datatype_row) == 0:
-        print("No DataType row in input data; assuming all data columns are numeric.")
-        # TODO: try to auto-detect column type. For now, assume numeric.
-        datatypes = pd.Series(index=df.columns)
-        datatypes[data_columnspec] = 'Numeric'
-    else:
-        # There is a DataType row
-        assert len(datatype_row) == 1
-        datatypes = df.loc[datatype_row,:].iloc[0]
+    # Field types
+    specified_types = typespecs.apply(extract_specs)
+    print(df)
+    print(specified_types)
+    columntypes = guess_datatypes(df, known_datatypes=specified_types)
+    print('columntypes',columntypes)
 
-    # Check for RowID column
-    if 'RowID' in columntypes.values:
-        id_columns = df.columns[columntypes == 'RowID']
-        if len(id_columns) > 1:
-            raise ValueError("More than one RowID column found.")
-        id_column = id_columns[0]
-        sample_ids = list(df.loc[data_rows,id_column])
-        fieldinfo_ids = list(df.loc[fieldinfo_rows,id_column])
-    else:
+    if is_index.sum()==0:
         sample_ids = ["sample{}".format(n+1) for n in range(len(data_rows))]
-        fieldinfo_ids = ["fieldinfo{}".format(n+1) for n in range(len(fieldinfo_rows))]
-
-    # Warn the user if they have assigned datatypes to any columns that won't
-    # take them.
-    # i.e. if datatypes has a value, and columntypes has a value other than
-    # RowInfo, Data, or ColumnType ('ColumnType' is in the RowType column, populated by 'DataType')
-    ignored_datatypes = ~datatypes.isnull() & \
-                           ~columntypes.isnull() & \
-                           ~columntypes.isin(['RowInfo','Data','ColumnType'])
-    if ignored_datatypes.sum() > 0:
-        print("Warning: DataType value assigned to columns that will ignore it: " + \
-                ",".join(df.columns[ignored_datatypes]))
-
-    # Check that sample_info and data columns have recognised data types
-    # If they don't, ignore them and warn the user
-    # TODO: handle categorical category specifications, and ordered categories
-    recognised_datatypes = datatypes.isin(['Numeric', 'Categorical', 'OrderedCategorical'])
-    unrecognised_data = data_columnspec & ~recognised_datatypes
-    if unrecognised_data.sum() > 0:
-        print("Warning: some data columns have unrecognised DataTypes, these will be ignored: " + \
-                ",".join(df.columns[unrecognised_data]))
-        data_columnspec = data_columnspec & recognised_datatypes
-
-    data_columns = df.columns[data_columnspec]
+        #fieldinfo_ids = ["fieldinfo{}".format(n+1) for n in range(len(fieldinfo_rows))]
+    elif is_index.sum()>1:
+            raise ValueError("More than one index column found")
+    else:
+        assert is_index.sum()==1
+        id_column = df.columns[is_index][0]
+        sample_ids = list(df.loc[data_rows,id_column])
+        #fieldinfo_ids = list(df.loc[fieldinfo_rows,id_column])
 
     # Extract data, field info and sample info
     print("Extracting data")
@@ -111,24 +131,19 @@ def parse_input(infile, separator):
 
     print("Extracting field info")
 
+    print(data_columns,columntypes,is_data)
     field_info = pd.DataFrame(index=data_columns)
-    field_info['FieldType'] = datatypes[data_columns]
-    for (fieldinfo_name, row_index) in zip(fieldinfo_ids, fieldinfo_rows):
-        field_info[fieldinfo_name] = df.loc[row_index, data_columns].transpose()
+    field_info['FieldType'] = columntypes[list(is_data)]
+    #for (fieldinfo_name, row_index) in zip(fieldinfo_ids, fieldinfo_rows):
+    #    field_info[fieldinfo_name] = df.loc[row_index, data_columns].transpose()
 
     print("Extracting sample info")
 
     sample_info = pd.DataFrame(index=data_rows)
-    sampleinfo_columns = (columntypes == 'RowInfo')
-    unrecognised_sampleinfo = sampleinfo_columns & ~recognised_datatypes
-    if unrecognised_sampleinfo.sum() > 0:
-        print("Warning: some RowInfo columns have unrecognised DataTypes, these will be ignored: " + \
-                ",".join(df.columns[unrecognised_sampleinfo]))
-        sampleinfo_columns = sampleinfo_columns & recognised_datatypes
-    sample_info = df.loc[data_rows, sampleinfo_columns]
+    sample_info = df.loc[data_rows, list(is_metadata)]
 
-    # Store datatypes types of RowInfo fields, if supplied
-    sample_info_types = pd.DataFrame(datatypes[sampleinfo_columns])
+    # Store datatypes types of sampleinfo fields
+    sample_info_types = pd.DataFrame(columntypes[list(is_metadata)])
     assert sample_info_types.shape[1]==1
     sample_info_types.columns = ['InfoType']
 
@@ -138,33 +153,14 @@ def parse_input(infile, separator):
     # For speed, convert all numeric columns, glue back together,
     # then reorder to original order to match field_info and to match
     # user-specified input order
-    is_numeric = field_info['FieldType']=='Numeric'
+    is_numeric = field_info['FieldType']=='Q'
     data = pd.merge(data.loc[:,~is_numeric], data.loc[:,is_numeric].astype('float'),
                    left_index=True, right_index=True)[list(field_info.index)]
-    # These methods are slow:
-    #for field in field_info.index:
-    #    if field_info.loc[field,'FieldType']=='Numeric':
-    #        data[field] = pd.to_numeric(data[field])
-    #
-    #numeric_columns = data.columns[field_info['FieldType']=='Numeric']
-    #data[numeric_columns] = data[numeric_columns].astype('float')
 
     # Give categorical columns appropriate dtype (pandas categorical)
-    # If any AllowedValues supplied, use them, and let pandas set other values to NaN.
-    # (can we warn on this?)
-    # Otherwise let pandas assume observed categories are allowed categories.
-    # If OrderedCategorical, use AllowedValues to specify order
-    # NB currently if OrderedCategorical and no values, will pandas throw error?
-    categorical_fields = field_info.index[field_info['FieldType'].isin(['Categorical','OrderedCategorical'])]
+    categorical_fields = field_info.index[field_info['FieldType'].isin(['N'])]
     for field in categorical_fields:
-        allowed_values = df.loc[allowedvalue_rows, field]
-        allowed_values = list(allowed_values[~allowed_values.isnull()])
-        #print("{} allowed values: {}".format(field,allowed_values))
-        kwargs = dict()
-        if len(allowed_values) > 0:
-            kwargs['categories'] = allowed_values
-        kwargs['ordered'] = (field_info.loc[field, 'FieldType'] == 'OrderedCategorical')
-        data[field] = data[field].astype('category', **kwargs)
+        data[field] = data[field].astype('category')
 
     # Use sample IDs as index
     data.index = sample_ids
@@ -181,5 +177,15 @@ def parse_input(infile, separator):
     #print("Data fields: {}".format(','.join(data.columns)))
     print("Sample info fields: {}".format(','.join(sample_info.columns)))
     print("Field info fields: {}".format(','.join(field_info.columns)))
+
+    # Use more explicit type specifiers
+    field_info['FieldType'] = field_info['FieldType'].map({'Q':'Numeric','N':'Categorical'})
+    sample_info_types['InfoType'] = sample_info_types['InfoType'].map({'Q':'Numeric','N':'Categorical'})
+
+    #print("Parse results:")
+    #print("Data\n",data)
+    #print("sample info",sample_info)
+    #print("sample info types",sample_info_types)
+    #print("field info",field_info)
 
     return (data, sample_info, sample_info_types, field_info)
