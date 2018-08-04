@@ -204,7 +204,7 @@ def mds_transform(data, field_info, scale=False):
     return (mds, transformed, original_fields)
 
 def tsne_transform(data, field_info, scale=False,
-                   pca_dims=50, perplexity=30, learning_rate=200,
+                   pca_dims=50, perplexity=20, learning_rate=200,
                    n_iter=1000, n_runs=1):
     """
     Apply tSNE to the data.
@@ -239,6 +239,7 @@ def tsne_transform(data, field_info, scale=False,
     else:
         compressed = encoded.as_matrix()
 
+    print("Performing tSNE")
     tsne = TSNE(2, perplexity=perplexity, learning_rate=learning_rate, n_iter=n_iter)
     tsne.fit(compressed)
     score = tsne.kl_divergence_
