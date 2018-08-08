@@ -13,13 +13,13 @@ For latest versions of packages, follow Dash installation instructions at https:
 
 The simplest usage is to launch reduct with the CSV file you want to visualise, like so:
 
-```python app.py datafile.csv```
+```python reduct.py datafile.csv```
 
 and point your browser to `127.0.0.1:8050`.
 
 See other usage options with
 
-```python app.py -h```
+```python reduct.py -h```
 
 ## Data format
 

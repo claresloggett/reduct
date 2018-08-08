@@ -108,10 +108,7 @@ def parse_input(infile, separator):
 
     # Field types
     specified_types = typespecs.apply(extract_specs)
-    print(df)
-    print(specified_types)
     columntypes = guess_datatypes(df, known_datatypes=specified_types)
-    print('columntypes',columntypes)
 
     if is_index.sum()==0:
         sample_ids = ["sample{}".format(n+1) for n in range(len(data_rows))]
