@@ -39,7 +39,6 @@ def guess_datatypes(df, known_datatypes=None):
     ALLOWED_VALUES = {'N','Q',''}
     if known_datatypes is None:
         known_datatypes = ['']*df.shape[1]
-    print(str(list(known_datatypes)))
     if len(set(known_datatypes) - ALLOWED_VALUES) > 0:
         raise ValueError("Unrecognised datatypes: {}".format(set(known_datatypes) - ALLOWED_VALUES))
 
@@ -128,7 +127,6 @@ def parse_input(infile, separator):
 
     print("Extracting field info")
 
-    print(data_columns,columntypes,is_data)
     field_info = pd.DataFrame(index=data_columns)
     field_info['FieldType'] = columntypes[list(is_data)]
     #for (fieldinfo_name, row_index) in zip(fieldinfo_ids, fieldinfo_rows):
