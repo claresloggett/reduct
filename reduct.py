@@ -201,12 +201,19 @@ pca_extra_stuff = html.Div(id='pca_extra_stuff',children=[
     dcc.Graph(id='pc_composition')
 ])
 
+# TODO: what if the required perplexity is much bigger than 100?
+# an alternate text box the user can type in would fix this
+# - set it from the slider or from user input
+default_perplexity = 10
 tsne_controls = html.Div(id='tsne_controls',children=[
     html.Div([
-        html.Label("Perplexity: ", style={'display':'inline-block'}),
+        html.Label("Perplexity: {}".format(default_perplexity),
+                   id='tsne_perplexity_label',
+                   style={'display':'inline-block'}),
         dcc.Slider(id='tsne_perplexity_slider',
-                   min=1, max=100, step=1, value=30,
-                   marks = {n:str(n) for n in [1,20,40,60,80,100]}),
+                   min=1, max=100, step=1, value=default_perplexity,
+                   marks = {n:str(n) for n in [1,20,40,60,80,100]},
+                   updatemode='drag'),
     ]),
     html.Button('Recalculate tSNE', id='tsne_button')
 ])
@@ -362,6 +369,17 @@ def update_mds(scale, missing_data_method, numeric_fill, categorical_fill, selec
     print("MDS results shape {}".format(transformed.shape))
     return json.dumps({'transformed': transformed.to_json(orient='split'),
                        'original_fields': original_fields})
+
+# TODO: write perplexity value on the graph itself
+#  so we can see what the value was when the recalculate button was pressed
+#  and so exported plots make it clear
+# TODO: allow user to set a graph title? or a dataset title?
+@app.callback(
+    Output('tsne_perplexity_label', 'children'),
+    [Input('tsne_perplexity_slider', 'value')]
+)
+def show_perplexity(perplexity):
+    return 'Perplexity: {}'.format(perplexity)
 
 @app.callback(
     Output('hidden_data_tsne', 'children'),
