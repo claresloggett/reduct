@@ -14,6 +14,9 @@ import flask
 import plotly.graph_objs as go
 import plotly
 
+import base64
+import io
+import datetime
 import argparse
 import os
 import json
@@ -78,7 +81,7 @@ upload_data = dcc.Upload(
             'textAlign': 'center',
             'margin': '10px'
         },
-        multiple=True
+        multiple=False
     )
 
 
@@ -93,29 +96,49 @@ app.layout = html.Div(children=[
 
     upload_data,
 
-    dcc.Markdown(id='output-data-upload'),
+    html.Div(id='output-data-upload'),
 
-    html.Div(
-        dt.DataTable(rows=[{}]),
-        style={'display': 'none'}
-    )
+    # needed to load relevant CSS/JS
+    html.Div(dt.DataTable(rows=[{}]),style={'display': 'none'})
 
 ])
+
+def parse_table(contents, filename, date):
+    content_type, content_string = contents.split(',')
+
+    decoded = base64.b64decode(content_string)
+    try:
+        if 'csv' in filename:
+            # Assume that the user uploaded a CSV file
+            df = pd.read_csv(
+                io.StringIO(decoded.decode('utf-8')))
+        elif 'xls' in filename:
+            # Assume that the user uploaded an excel file
+            df = pd.read_excel(io.BytesIO(decoded))
+    except Exception as e:
+        print(e)
+        return html.Div([
+            'There was an error processing this file.'
+        ])
+
+    return [
+        html.H5(filename),
+        html.H6(datetime.datetime.fromtimestamp(date)),
+
+        # Use the DataTable prototype component:
+        # github.com/plotly/datatable-experiments
+        dt.DataTable(rows=df.to_dict('records'))
+        ]
 
 
 @app.callback(Output('output-data-upload', 'children'),
               [Input('upload-data', 'contents')],
               [State('upload-data', 'filename'),
                State('upload-data', 'last_modified')])
-def update_output(list_of_contents, list_of_names, list_of_dates):
-    if list_of_contents is not None:
-        #mkdown = '\n'.join(
-        #    ["* {} {}".format(n, d)
-        #    for c, n, d in
-        #    zip(list_of_contents, list_of_names, list_of_dates)])
-        mkdown = "_\n{}\n{}\n".format(
-            list_of_names, list_of_dates)
-        return mkdown
+def update_output(contents, filename, datestamp):
+    if contents is not None:
+        return parse_table(contents, filename, datestamp)
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
