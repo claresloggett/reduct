@@ -14,6 +14,7 @@ import flask
 import plotly.graph_objs as go
 import plotly
 
+import uuid
 import base64
 import io
 import datetime
@@ -26,7 +27,10 @@ from sklearn.decomposition import PCA
 from ingest_data import parse_input
 from transform_data import complete_missing_data, pca_transform, mds_transform, tsne_transform
 
+
 app_dir = os.getcwd()
+
+filecache_dir = os.path.join(app_dir, 'cached_files')
 
 # Parse command-line
 parser = argparse.ArgumentParser(description='Toy app')
@@ -90,20 +94,29 @@ pca_plot = dcc.Graph(id='pca_plot', animate=True)
 
 # *** Top-level app layout ***
 
-app.layout = html.Div(children=[
+def serve_layout():
+    session_id = str(uuid.uuid4())
+    layout =  html.Div(children=[
 
-    hidden_data,
+        html.Div(session_id, id='session-id'), #style={'display': 'none'}),
+        html.Div(id='filecache_marker', style={'display': 'none'}),
 
-    upload_data,
+        upload_data,
 
-    html.Div(id='output-data-upload'),
+        html.Div(id='output-data-upload'),
 
-    # needed to load relevant CSS/JS
-    html.Div(dt.DataTable(rows=[{}]),style={'display': 'none'})
+        # needed to load relevant CSS/JS
+        html.Div(dt.DataTable(rows=[{}]),style={'display': 'none'})
+    ])
+    return layout
 
-])
+app.layout = serve_layout
 
-def parse_table(contents, filename, date):
+
+def parse_table(contents, filename):
+    '''
+    Parse uploaded tabular file and return dataframe.
+    '''
     content_type, content_string = contents.split(',')
 
     decoded = base64.b64decode(content_string)
@@ -117,27 +130,55 @@ def parse_table(contents, filename, date):
             df = pd.read_excel(io.BytesIO(decoded))
     except Exception as e:
         print(e)
-        return html.Div([
-            'There was an error processing this file.'
-        ])
-
-    return [
-        html.H5(filename),
-        html.H6(datetime.datetime.fromtimestamp(date)),
-
-        # Use the DataTable prototype component:
-        # github.com/plotly/datatable-experiments
-        dt.DataTable(rows=df.to_dict('records'))
-        ]
+        return None
+    return df
 
 
-@app.callback(Output('output-data-upload', 'children'),
-              [Input('upload-data', 'contents')],
-              [State('upload-data', 'filename'),
-               State('upload-data', 'last_modified')])
-def update_output(contents, filename, datestamp):
+def write_dataframe(session_id, df):
+    '''
+    Write dataframe to disk, for now just as CSV
+    For now do not preserve or distinguish filename;
+    user has one file at once.
+    '''
+    filename = os.path.join(filecache_dir, session_id)
+    df.to_csv(filename)
+
+# cache memoize this and add timestamp as input!
+def read_dataframe(session_id):
+    '''
+    Read dataframe from disk, for now just as CSV
+    '''
+    filename = os.path.join(filecache_dir, session_id)
+    df = pd.read_csv(filename)
+    return df
+
+@app.callback(
+    Output('filecache_marker', 'children'),
+    [Input('upload-data', 'contents'),
+     Input('upload-data', 'filename'),
+     Input('upload-data', 'last_modified')],
+    [State('session-id', 'children')])
+def save_file(contents, filename, last_modified, session_id):
+    # write contents to file
     if contents is not None:
-        return parse_table(contents, filename, datestamp)
+        df = parse_table(contents, filename)
+        write_dataframe(session_id, df)
+        return str(last_modified) # not str()?
+
+# up to here: update table using read file
+
+# could remove last_modified state
+# but want either it or filecache timestamp as input to read_dataframe
+@app.callback(Output('output-data-upload', 'children'),
+              [Input('filecache_marker', 'children')],
+              [State('upload-data', 'last_modified'),
+               State('session-id','children')])
+def update_table(filecache_marker, timestamp, session_id):
+    if filecache_marker is not None:
+        df = read_dataframe(session_id)
+        # could do rows directly
+        output = [dt.DataTable(rows=df.to_dict('records'))]
+        return output
 
 
 if __name__ == '__main__':
