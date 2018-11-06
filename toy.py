@@ -10,6 +10,7 @@ from dash.dependencies import Input, Output, State, Event
 
 import dash_table_experiments as dt
 import flask
+from flask_caching import Cache
 
 import plotly.graph_objs as go
 import plotly
@@ -63,11 +64,19 @@ app.css.append_css({'external_url': '/static_files/app_layout.css'})
 app.scripts.append_script({'external_url': 'http://code.jquery.com/jquery-3.3.1.min.js'})
 app.scripts.append_script({'external_url': 'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js'})
 
-# *** Define UI and other layout elements ***
+cache = Cache(app.server, config={
+    'CACHE_TYPE': 'redis',
+    # Note that filesystem cache doesn't work on systems with ephemeral
+    # filesystems like Heroku.
+    #'CACHE_TYPE': 'filesystem',
+    #'CACHE_DIR': 'cache-directory',
 
-hidden_data = html.Div(id='hidden_data',
-                           children="",
-                           style={'display':'none'})
+    # should be equal to maximum number of users on the app at a single time
+    # higher numbers will store more data in the filesystem / redis cache
+    'CACHE_THRESHOLD': 50
+})
+
+# *** Define UI and other layout elements ***
 
 upload_data = dcc.Upload(
         id='upload-data',
@@ -144,7 +153,8 @@ def write_dataframe(session_id, df):
     df.to_csv(filename)
 
 # cache memoize this and add timestamp as input!
-def read_dataframe(session_id):
+@cache.memoize()
+def read_dataframe(session_id, timestamp):
     '''
     Read dataframe from disk, for now just as CSV
     '''
