@@ -7,6 +7,7 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output, State, Event
+#from dash.exceptions import PreventUpdate
 
 import dash_table_experiments as dt
 import flask
@@ -19,6 +20,7 @@ import uuid
 import base64
 import io
 import datetime
+import time
 import argparse
 import os
 import json
@@ -104,6 +106,7 @@ pca_plot = dcc.Graph(id='pca_plot', animate=True)
 # *** Top-level app layout ***
 
 def serve_layout():
+    print('Calling serve_layout')
     session_id = str(uuid.uuid4())
     layout =  html.Div(children=[
 
@@ -112,7 +115,9 @@ def serve_layout():
 
         upload_data,
 
-        html.Div(id='output-data-upload'),
+        html.Div(id='data-table-div'),
+
+        dcc.Graph(id='two-column-graph'),
 
         # needed to load relevant CSS/JS
         html.Div(dt.DataTable(rows=[{}]),style={'display': 'none'})
@@ -126,6 +131,7 @@ def parse_table(contents, filename):
     '''
     Parse uploaded tabular file and return dataframe.
     '''
+    print('Calling parse_table')
     content_type, content_string = contents.split(',')
 
     decoded = base64.b64decode(content_string)
@@ -139,7 +145,10 @@ def parse_table(contents, filename):
             df = pd.read_excel(io.BytesIO(decoded))
     except Exception as e:
         print(e)
-        return None
+        raise
+    print('Read dataframe:')
+    print(df.columns)
+    print(df)
     return df
 
 
@@ -149,8 +158,9 @@ def write_dataframe(session_id, df):
     For now do not preserve or distinguish filename;
     user has one file at once.
     '''
+    print('Calling write_dataframe')
     filename = os.path.join(filecache_dir, session_id)
-    df.to_csv(filename)
+    df.to_csv(filename, index=False)
 
 # cache memoize this and add timestamp as input!
 @cache.memoize()
@@ -158,8 +168,12 @@ def read_dataframe(session_id, timestamp):
     '''
     Read dataframe from disk, for now just as CSV
     '''
+    print('Calling read_dataframe')
     filename = os.path.join(filecache_dir, session_id)
     df = pd.read_csv(filename)
+    # simulate reading in big data with a delay
+    print('** Reading data from disk **')
+    time.sleep(5)
     return df
 
 @app.callback(
@@ -170,25 +184,60 @@ def read_dataframe(session_id, timestamp):
     [State('session-id', 'children')])
 def save_file(contents, filename, last_modified, session_id):
     # write contents to file
+    print('Calling save_file')
+    print('New last_modified would be',last_modified)
     if contents is not None:
+        print('contents is not None')
         df = parse_table(contents, filename)
         write_dataframe(session_id, df)
         return str(last_modified) # not str()?
 
-# up to here: update table using read file
-
 # could remove last_modified state
 # but want either it or filecache timestamp as input to read_dataframe
-@app.callback(Output('output-data-upload', 'children'),
+@app.callback(Output('data-table-div', 'children'),
               [Input('filecache_marker', 'children')],
               [State('upload-data', 'last_modified'),
                State('session-id','children')])
 def update_table(filecache_marker, timestamp, session_id):
+    print('Calling update_table')
     if filecache_marker is not None:
-        df = read_dataframe(session_id)
-        # could do rows directly
+        print('filecache marker is not None')
+        print('filecache marker:',filecache_marker)
+        try:
+            df = read_dataframe(session_id, timestamp)
+        except Exception as e:
+            # Show exception
+            return str(e)
         output = [dt.DataTable(rows=df.to_dict('records'))]
         return output
+
+
+@app.callback(Output('two-column-graph', 'figure'),
+              [Input('filecache_marker', 'children')],
+              [State('upload-data', 'last_modified'),
+               State('session-id','children')])
+def update_graph(filecache_marker, timestamp, session_id):
+    ''' Plot first column against second '''
+    print('Calling update_graph')
+    # For now no dtype checking!
+    # For now no error checking either
+    if filecache_marker is None:
+        raise ValueError('No data yet') # want PreventUpdate
+
+    df = read_dataframe(session_id, timestamp)
+    traces = [go.Scatter(x=df.iloc[:,0], y=df.iloc[:,1],
+                mode='markers', marker=dict(size=10, opacity=0.7),
+                text=df.index)]
+    figure = {
+        'data': traces,
+        'layout': {
+            'title': 'Graph',
+            'xaxis': {'title': df.columns[0]},
+            'yaxis': {'title': df.columns[1]},
+            'hovermode': 'closest',
+        }
+    }
+    return figure
 
 
 if __name__ == '__main__':
