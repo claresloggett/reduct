@@ -19,6 +19,7 @@ import plotly
 import uuid
 import base64
 import io
+import pickle
 import datetime
 import time
 import argparse
@@ -162,7 +163,7 @@ def write_dataframe(session_id, df):
     '''
     print('Calling write_dataframe')
     filename = os.path.join(filecache_dir, session_id)
-    df.to_csv(filename, index=False)
+    df.to_pickle(filename)
 
 # cache memoize this and add timestamp as input!
 @cache.memoize()
@@ -172,7 +173,7 @@ def read_dataframe(session_id, timestamp):
     '''
     print('Calling read_dataframe')
     filename = os.path.join(filecache_dir, session_id)
-    df = pd.read_csv(filename)
+    df = pd.read_pickle(filename)
     # simulate reading in big data with a delay
     print('** Reading data from disk **')
     time.sleep(5)
