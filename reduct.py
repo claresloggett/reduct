@@ -12,6 +12,7 @@ import plotly
 import argparse
 import os
 import json
+import uuid
 import pandas as pd
 from sklearn.decomposition import PCA
 
@@ -232,62 +233,67 @@ def define_tab_li(id, target, text, active=False):
 
 # *** Top-level app layout ***
 
-app.layout = html.Div(children=[
+def serve_layout():
+    session_id = str(uuid.uuid4())
+    return html.Div(children=[
 
-    hidden_data_pca,
-    hidden_data_mds,
-    hidden_data_tsne,
-    dummy_input,
+            html.Div(session_id, id='session-id', style={'display': 'none'}),
 
-    html.Div(id='header_bar', children=[
-        html.Div(id='app_label_box',children=[
-            html.Label('reduct', id='app_name')
+            hidden_data_pca,
+            hidden_data_mds,
+            hidden_data_tsne,
+            dummy_input,
+
+            html.Div(id='header_bar', children=[
+                html.Div(id='app_label_box',children=[
+                    html.Label('reduct', id='app_name')
+                    ]),
+                #  plot_type_selector
+                html.Ul(id='tabs',className="nav nav-tabs",children=[
+                    define_tab_li(id="upload_tab", target="#upload_panel", text="Upload", active=True),
+                    define_tab_li(id="pca_tab", target="#pca_panel", text="PCA"),
+                    define_tab_li(id="mds_tab", target="#mds_panel", text="MDS"),
+                    define_tab_li(id="mds_tab", target="#tsne_panel", text="tSNE")
+                ])
             ]),
-        #  plot_type_selector
-        html.Ul(id='tabs',className="nav nav-tabs",children=[
-            define_tab_li(id="upload_tab", target="#upload_panel", text="Upload", active=True),
-            define_tab_li(id="pca_tab", target="#pca_panel", text="PCA"),
-            define_tab_li(id="mds_tab", target="#mds_panel", text="MDS"),
-            define_tab_li(id="mds_tab", target="#tsne_panel", text="tSNE")
-        ])
-    ]),
 
-    html.Div(id='sidebar',children=[
-        fieldinfo_div,
-        general_plot_options,
-        colour_selector,
-        html.Div(id='lower_padding')
-    ]),
+            html.Div(id='sidebar',children=[
+                fieldinfo_div,
+                general_plot_options,
+                colour_selector,
+                html.Div(id='lower_padding')
+            ]),
 
-    html.Div(id='main_content',className='tab-content',children=[
-        html.Div(id='upload_panel', className='tab-pane', children=[
-            html.Div(id='upload_box', children=[
-                dcc.Upload(id='upload_data',
-                children=html.Div([
-                    'Drag and Drop or ',
-                    html.A('Select File')
+            html.Div(id='main_content',className='tab-content',children=[
+                html.Div(id='upload_panel', className='tab-pane', children=[
+                    html.Div(id='upload_box', children=[
+                        dcc.Upload(id='upload_data',
+                        children=html.Div([
+                            'Drag and Drop or ',
+                            html.A('Select File')
+                        ]),
+                        multiple=False
+                    )])
                 ]),
-                multiple=False
-            )])
-        ]),
-        html.Div(id='pca_panel', className='tab-pane', children=[
-            #data_info(),
-            pca_axes_selectors,
-            pca_plot,
-            pca_extra_stuff
-        ]),
-        html.Div(id='mds_panel', className='tab-pane', children=[
-            #data_info(),
-            mds_plot
-        ]),
-        html.Div(id='tsne_panel', className='tab-pane', children=[
-            #data_info(),
-            tsne_controls,
-            tsne_plot
-        ]),
-    ])
-])
+                html.Div(id='pca_panel', className='tab-pane', children=[
+                    #data_info(),
+                    pca_axes_selectors,
+                    pca_plot,
+                    pca_extra_stuff
+                ]),
+                html.Div(id='mds_panel', className='tab-pane', children=[
+                    #data_info(),
+                    mds_plot
+                ]),
+                html.Div(id='tsne_panel', className='tab-pane', children=[
+                    #data_info(),
+                    tsne_controls,
+                    tsne_plot
+                ]),
+            ])
+        ])
 
+app.layout = serve_layout
 
 # Build controls list dynamically, based on available selectors at launch
 main_input_components = [Input('scale_selector','value'),
