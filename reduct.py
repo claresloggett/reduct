@@ -34,7 +34,6 @@ parser.add_argument('--hover-data', dest='hover_data', action='store_true',
 parser.add_argument('--colour-by-data', dest='colour_by_data', action='store_true',
                      help='allow selection of data fields as well as sampleinfo for colouring points')
 
-# max_PCs
 args = parser.parse_args()
 
 # read and parse data
@@ -246,7 +245,8 @@ app.layout = html.Div(children=[
             ]),
         #  plot_type_selector
         html.Ul(id='tabs',className="nav nav-tabs",children=[
-            define_tab_li(id="pca_tab", target="#pca_panel", text="PCA", active=True),
+            define_tab_li(id="upload_tab", target="#upload_panel", text="Upload", active=True),
+            define_tab_li(id="pca_tab", target="#pca_panel", text="PCA"),
             define_tab_li(id="mds_tab", target="#mds_panel", text="MDS"),
             define_tab_li(id="mds_tab", target="#tsne_panel", text="tSNE")
         ])
@@ -260,6 +260,16 @@ app.layout = html.Div(children=[
     ]),
 
     html.Div(id='main_content',className='tab-content',children=[
+        html.Div(id='upload_panel', className='tab-pane', children=[
+            html.Div(id='upload_box', children=[
+                dcc.Upload(id='upload_data',
+                children=html.Div([
+                    'Drag and Drop or ',
+                    html.A('Select File')
+                ]),
+                multiple=False
+            )])
+        ]),
         html.Div(id='pca_panel', className='tab-pane', children=[
             #data_info(),
             pca_axes_selectors,
@@ -370,9 +380,6 @@ def update_mds(scale, missing_data_method, numeric_fill, categorical_fill, selec
     return json.dumps({'transformed': transformed.to_json(orient='split'),
                        'original_fields': original_fields})
 
-# TODO: write perplexity value on the graph itself
-#  so we can see what the value was when the recalculate button was pressed
-#  and so exported plots make it clear
 # TODO: allow user to set a graph title? or a dataset title?
 @app.callback(
     Output('tsne_perplexity_label', 'children'),
