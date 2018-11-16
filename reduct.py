@@ -11,8 +11,11 @@ import plotly
 
 import argparse
 import os
+import io
+import errno
 import json
 import uuid
+import base64
 import pandas as pd
 from sklearn.decomposition import PCA
 
@@ -20,6 +23,15 @@ from ingest_data import parse_input
 from transform_data import complete_missing_data, pca_transform, mds_transform, tsne_transform
 
 app_dir = os.getcwd()
+
+filecache_dir = os.path.join(app_dir, 'cached_files')
+
+# Create save file directory if it doesn't exist
+try:
+    os.makedirs(filecache_dir)
+except OSError as e:
+    if e.errno != errno.EEXIST:
+        raise
 
 # Parse command-line
 parser = argparse.ArgumentParser(description='App for visualising high-dimensional data')
@@ -237,7 +249,8 @@ def serve_layout():
     session_id = str(uuid.uuid4())
     return html.Div(children=[
 
-            html.Div(session_id, id='session-id', style={'display': 'none'}),
+            html.Div(session_id, id='session_id', style={'display': 'none'}),
+            html.Div(id='filecache_timestamp', style={'display': 'none'}),
 
             hidden_data_pca,
             hidden_data_mds,
@@ -294,6 +307,60 @@ def serve_layout():
         ])
 
 app.layout = serve_layout
+
+
+def write_dataframe(session_id, df):
+    '''
+    Write dataframe to disk, identified by session id.
+    Original filename is not preserved;
+    user has one file at once.
+    '''
+    filename = os.path.join(filecache_dir, session_id)
+    df.to_pickle(filename)
+
+def read_dataframe(session_id, timestamp):
+    '''
+    Read dataframe from disk.
+    '''
+    filename = os.path.join(filecache_dir, session_id)
+    df = pd.read_pickle(filename)
+    return df
+
+def parse_table(contents, filename):
+    '''
+    Parse uploaded tabular file and return dataframe.
+    '''
+    content_type, content_string = contents.split(',')
+
+    decoded = base64.b64decode(content_string)
+    try:
+        if 'csv' in filename:
+            # Assume that the user uploaded a CSV file
+            df = pd.read_csv(
+                io.StringIO(decoded.decode('utf-8')))
+        elif 'xls' in filename:
+            # Assume that the user uploaded an excel file
+            df = pd.read_excel(io.BytesIO(decoded))
+    except Exception as e:
+        print(e)
+        raise
+    #print('Read dataframe:')
+    #print(df.columns)
+    #print(df)
+    return df
+
+@app.callback(
+    Output('filecache_timestamp', 'children'),
+    [Input('upload_data', 'contents'),
+     Input('upload_data', 'filename'),
+     Input('upload_data', 'last_modified')],
+    [State('session_id', 'children')])
+def save_file(contents, filename, last_modified, session_id):
+    # write contents to file
+    if contents is not None:
+        df = parse_table(contents, filename)
+        write_dataframe(session_id, df)
+        return last_modified
 
 # Build controls list dynamically, based on available selectors at launch
 main_input_components = [Input('scale_selector','value'),
