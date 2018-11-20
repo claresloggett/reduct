@@ -174,7 +174,7 @@ def pca_transform(data, field_info, max_pcs, scale=False):
     # Do PCA
     num_pcs = min(max_pcs, encoded.shape[1], encoded.shape[0])
     pca = PCA(num_pcs)
-    transformed = pd.DataFrame(pca.fit_transform(encoded.as_matrix()), index=encoded.index)
+    transformed = pd.DataFrame(pca.fit_transform(encoded.values), index=encoded.index)
     pca_names = ["PCA{}".format(n) for n in range(1,num_pcs+1)]
     transformed.columns = pca_names
 
@@ -198,7 +198,7 @@ def mds_transform(data, field_info, scale=False):
     encoded, original_fields = preprocess(data, field_info, scale)
 
     mds = MDS(2)
-    transformed = pd.DataFrame(mds.fit_transform(encoded.as_matrix()), index=encoded.index)
+    transformed = pd.DataFrame(mds.fit_transform(encoded.values), index=encoded.index)
     transformed.columns = ['MDS dim A','MDS dim B']
 
     return (mds, transformed, original_fields)
@@ -235,9 +235,9 @@ def tsne_transform(data, field_info, scale=False,
     if pca_dims is not None and pca_dims < data.shape[1]:
         print("Carrying out PCA prior to tSNE: {} -> {}".format(data.shape[1],pca_dims))
         pca = PCA(pca_dims)
-        compressed = pca.fit_transform(encoded.as_matrix())
+        compressed = pca.fit_transform(encoded.values)
     else:
-        compressed = encoded.as_matrix()
+        compressed = encoded.values
 
     print("Performing tSNE")
     tsne = TSNE(2, perplexity=perplexity, learning_rate=learning_rate, n_iter=n_iter)
