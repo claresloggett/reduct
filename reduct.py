@@ -60,26 +60,22 @@ field_info['MissingValues'] = data.isnull().sum()
 field_info_table = field_info
 field_info_table['Field'] = field_info_table.index
 
-app = dash.Dash()
+external_scripts = [
+    'http://code.jquery.com/jquery-3.3.1.min.js',
+    'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js'
+]
 
-#app.scripts.config.serve_locally = True
+# will also automatically serve assets/ folder
+external_css = [
+    'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css',
+    'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css'
+]
 
-# app.server is the flask app
-# in current dash version, static as path won't work?
-# later also replace with app.send_from_directory?
-@app.server.route('/static_files/<path:path>')
-def static_file(path):
-    return flask.send_from_directory(os.path.join(app_dir,'static'), path)
+app = dash.Dash(
+    __name__,
+    external_scripts=external_scripts,
+    external_stylesheets=external_css)
 
-#app.css.config.serve_locally = True
-#app.css.append_css({'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'})
-
-app.css.append_css({"external_url": "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"})
-app.css.append_css({"external_url": "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css"})
-app.css.append_css({'external_url': '/static_files/app_layout.css'})
-
-app.scripts.append_script({'external_url': 'http://code.jquery.com/jquery-3.3.1.min.js'})
-app.scripts.append_script({'external_url': 'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js'})
 
 # *** Define UI and other layout elements ***
 
@@ -238,7 +234,7 @@ def define_tab_li(id, target, text, active=False):
                 children=[
                 html.A(id=id,
                        className=classes,
-                       href='#'+target,
+                       href=target,
                        children=text,
                        **{'data-toggle': 'tab'})
                 ])
@@ -266,7 +262,7 @@ def serve_layout():
                     define_tab_li(id="upload_tab", target="#upload_panel", text="Upload", active=True),
                     define_tab_li(id="pca_tab", target="#pca_panel", text="PCA"),
                     define_tab_li(id="mds_tab", target="#mds_panel", text="MDS"),
-                    define_tab_li(id="mds_tab", target="#tsne_panel", text="tSNE")
+                    define_tab_li(id="tsne_tab", target="#tsne_panel", text="tSNE")
                 ])
             ]),
 
