@@ -399,6 +399,50 @@ def save_data(contents, filename, last_modified, session_id):
         return last_modified
 
 
+@cache.memoize()
+def get_completed_data(session_id, timestamp, selected_fields, method,
+                       numeric_fill, categorical_fill):
+    """
+    Get dataset and call complete_missing_data() to create
+    dataframe with no missing values.
+    Return completed dataframe.
+    Memoised by completion settings, session and upload timestamp.
+    """
+    data = read_dataframe(session_id+'_data', timestamp)
+    field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
+
+    if not args.show_fieldtable:
+        assert selected_fields is None
+        selected_fields = list(range(data.shape[1]))
+
+    # TODO: we don't really need fields_kept or samples_kept
+    # we could get this from the columns and index of completed
+    completed, fields_kept, samples_kept = complete_missing_data(
+        data.iloc[:,selected_fields],
+        field_info.iloc[selected_fields,:],
+        method=method, numeric_fill=numeric_fill,
+        categorical_fill=categorical_fill)
+
+    return completed
+
+@cache.memoize()
+def get_mds_data(session_id, timestamp, scale, selected_fields,
+        fill_method, numeric_fill, categorical_fill):
+    """
+    Get completed dataset and call mds_transform.
+    Return transformed data.
+    Memoised by completion settings, MDS options, session and
+    upload timestamp.
+    """
+    data = get_completed_data(session_id, timestamp, selected_fields,
+        fill_method, numeric_fill, categorical_fill)
+    field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
+    # TODO: we only really need transformed
+    mds, transformed, original_fields = mds_transform(
+        data, field_info.loc[data.columns,:], scale=scale)
+
+    return transformed
+
 # Build controls list dynamically, based on available selectors at launch
 main_input_components = [Input('scale_selector','value'),
                          Input('missing_data_selector','value'),
@@ -453,42 +497,6 @@ def update_pca(scale, missing_data_method, numeric_fill, categorical_fill, selec
                        'components': components.to_json(),
                        'original_fields': original_fields})
 
-# TODO: do data encoding once and store?
-# also, reuse PCA calculation for tSNE dim reduction
-@app.callback(
-    Output('hidden_data_mds', 'children'),
-    main_input_components
-)
-def update_mds(scale, missing_data_method, numeric_fill, categorical_fill, selected_fields):
-    """
-    Re-do the MDS embedding based on included fields and missing data handling.
-    Store in a hidden div.
-    Logical order of data processing is:
-    - filter out any fields the user has manually deselected
-    - apply chosen missing data method
-    - MDS
-    """
-    print("Updating MDS data")
-    if not args.show_fieldtable:
-        assert selected_fields is None
-        selected_fields = list(range(data.shape[1]))
-    data_completed, fields_kept, samples_kept = complete_missing_data(
-                                         data.iloc[:,selected_fields],
-                                         field_info.iloc[selected_fields,:],
-                                         missing_data_method,
-                                         numeric_fill, categorical_fill)
-    # fields_kept is a boolean over fields_info.index[selected_fields].
-    # samples_kept and fields_kept, plus selected_fields, are
-    # already applied in calculating data_completed.
-    # However we need to subset field_info.
-    # Could reapply selected_fields and apply fields_kept,
-    # or can just take data_completed.columns
-    mds, transformed, original_fields = mds_transform(data_completed,
-                                     field_info.loc[data_completed.columns,:],
-                                     scale=scale)
-    print("MDS results shape {}".format(transformed.shape))
-    return json.dumps({'transformed': transformed.to_json(orient='split'),
-                       'original_fields': original_fields})
 
 # TODO: allow user to set a graph title? or a dataset title?
 @app.callback(
@@ -535,6 +543,7 @@ def update_tsne(_n_clicks, perplexity, scale, missing_data_method, numeric_fill,
     print("tSNE results shape {}".format(transformed.shape))
     return json.dumps({'transformed': transformed.to_json(orient='split'),
                        'original_fields': original_fields})
+
 
 @app.callback(
     Output('pca_axes_selectors','children'),
@@ -583,17 +592,37 @@ def update_pca_plot(x_field, y_field, colour_field_selection, stored_data):
 
     return figure
 
+# TODO: for now filecache_timestamp is an input
+# if we want to reset missing data controls, need to callback to generate
+# them, and set timestamp to input to that
 @app.callback(
     Output('mds_plot','figure'),
-    [Input('hidden_data_mds', 'children'), Input('colour_dropdown','value')]
+    main_input_components +
+    [Input('colour_dropdown','value'), Input('filecache_timestamp','children')],
+    state=[State('session_id','children')]
 )
-def update_mds_plot(stored_data, colour_field_selection):
-    # If storing transformed data this way, ought to memoise PCA calculation
+def update_mds_plot(scale, missing_data_method, numeric_fill, categorical_fill,
+                    selected_fields, colour_field_selection, timestamp,
+                    session_id):
     print("Updating MDS figure")
+
+    transformed = get_mds_data(
+        session_id, timestamp, scale, selected_fields,
+        missing_data_method, numeric_fill, categorical_fill)
+
+    # TODO: we are reading and passing entire original data which is only used if hover_data
+    data = read_dataframe(session_id + '_data', timestamp)
+    field_info = read_dataframe(session_id + '_fieldinfo', timestamp)
+    sample_info = read_dataframe(session_id + '_sampleinfo', timestamp)
+    sample_info_types = read_dataframe(session_id + '_sampleinfotypes', timestamp)
 
     figure = create_plot(x_field='MDS dim A',
                          y_field='MDS dim B',
-                         stored_data=stored_data,
+                         transformed=transformed,
+                         data=data,
+                         sample_info=sample_info,
+                         sample_info_types=sample_info_types,
+                         field_info=field_info,
                          colour_field_selection=colour_field_selection,
                          plot_title='MDS',
                          xaxis_label='MDS dim A',
@@ -619,18 +648,14 @@ def update_tsne_plot(stored_data, colour_field_selection):
 
     return figure
 
-def create_plot(x_field, y_field, stored_data, colour_field_selection,
+def create_plot(x_field, y_field, transformed, data,
+                sample_info, sample_info_types, field_info,
+                colour_field_selection,
                 plot_title, xaxis_label, yaxis_label):
     """
     Create a scatter plot based on already-transformed data.
     Returns the figure.
     """
-    # Don't try to calculate plot if UI controls not initialised yet
-    # Note that we must however return a valid figure specification
-    if stored_data=="":
-        print("Data not initialised yet; skipping figure callback")
-        return {'data': [], 'layout': {'title': 'Calculating plot...'}}
-    transformed = pd.read_json(json.loads(stored_data)['transformed'], orient='split')
     print("Plotting {} points".format(len(transformed)))
     # In case we dropped any samples during transformation
     sample_info_used = sample_info.loc[transformed.index,:]
