@@ -69,9 +69,10 @@ def extract_specs(spec, codes="NQ", assert_single=True):
     else:
         return values[0]
 
-def parse_input(infile, separator):
+def parse_input(infile, separator=None, filetype='csv'):
     """
     Parse input data from CSV file.
+    infile is passed to Pandas and may be a filename or file handle.
     Split sample and field info from actual data.
     The first row must be the header row, with column names.
     Suffixes to variable names, split by : , will be interpreted
@@ -88,8 +89,16 @@ def parse_input(infile, separator):
 
     Return (data, sample_info, sample_info_types, field_info).
     """
-    print("Reading "+str(infile))
-    df = pd.read_csv(infile, sep=separator, header=0)
+    if filetype=='csv':
+        df = pd.read_csv(infile, sep=separator, header=0)
+    elif filetype=='tsv':
+        # or could set separator
+        df = pd.read_table(infile, sep=separator, header=0)
+    elif filetype=='excel':
+        df = pd.read_excel(infile, header=0)
+    else:
+        raise ValueError(
+            'Unrecognised file type {} passed to parse_input'.format(filetype))
 
     fieldnames, typespecs = zip(*[split_typespec(col) for col in df.columns])
     typespecs = pd.Series(typespecs, index=fieldnames)

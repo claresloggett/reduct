@@ -14,3 +14,4 @@ dependencies:
  - dash-html-components=0.13.2
  - pip:
    - dash-table-experiments
+   - flask-caching

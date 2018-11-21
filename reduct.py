@@ -5,6 +5,7 @@ from dash.dependencies import Input, Output, State, Event
 
 import dash_table_experiments
 import flask
+from flask_caching import Cache
 
 import plotly.graph_objs as go
 import plotly
@@ -26,12 +27,6 @@ app_dir = os.getcwd()
 
 filecache_dir = os.path.join(app_dir, 'cached_files')
 
-# Create save file directory if it doesn't exist
-try:
-    os.makedirs(filecache_dir)
-except OSError as e:
-    if e.errno != errno.EEXIST:
-        raise
 
 # Parse command-line
 parser = argparse.ArgumentParser(description='App for visualising high-dimensional data')
@@ -48,6 +43,7 @@ parser.add_argument('--colour-by-data', dest='colour_by_data', action='store_tru
                      help='allow selection of data fields as well as sampleinfo for colouring points')
 
 args = parser.parse_args()
+
 
 # read and parse data
 data, sample_info, sample_info_types, field_info = parse_input(args.infile, separator=args.separator)
@@ -75,6 +71,22 @@ app = dash.Dash(
     __name__,
     external_scripts=external_scripts,
     external_stylesheets=external_css)
+
+
+# Saved files and cache
+
+#Create save file directory if it doesn't exist
+try:
+    os.makedirs(filecache_dir)
+except OSError as e:
+    if e.errno != errno.EEXIST:
+        raise
+
+# simple cache for now: thread-safe later
+cache = Cache(app.server, config={
+    'CACHE_TYPE': 'simple',
+    'CACHE_THRESHOLD': 100}
+    )
 
 
 # *** Define UI and other layout elements ***
@@ -305,45 +317,67 @@ def serve_layout():
 app.layout = serve_layout
 
 
-def write_dataframe(session_id, df):
+def write_dataframe(filename, df):
     '''
-    Write dataframe to disk, identified by session id.
-    Original filename is not preserved;
-    user has one file at once.
+    Write dataframe to disk.
     '''
-    filename = os.path.join(filecache_dir, session_id)
-    df.to_pickle(filename)
+    path = os.path.join(filecache_dir, filename)
+    df.to_pickle(path)
 
-def read_dataframe(session_id, timestamp):
+@cache.memoize()
+def read_dataframe(filename, timestamp):
     '''
     Read dataframe from disk.
     '''
-    filename = os.path.join(filecache_dir, session_id)
-    df = pd.read_pickle(filename)
+    path = os.path.join(filecache_dir, filename)
+    df = pd.read_pickle(path)
     return df
+
+# TODO: could allow user to specify
+# TODO: could try parsing with each kind and see which works and has most columns
+def guess_filetype(filename):
+    extension = filename.split('.')[-1]
+    if extension=='csv':
+        return 'csv'
+    elif extension=='tsv':
+        return 'tsv'
+    elif 'xls' in extension:
+        return 'excel'
+    else:
+        print('Warning: unknown file extension; guessing CSV')
 
 def parse_table(contents, filename):
     '''
-    Parse uploaded tabular file and return dataframe.
+    Parse uploaded tabular file and return dataframes
+    (data, sample_info, sample_info_types, field_info).
     '''
     content_type, content_string = contents.split(',')
 
     decoded = base64.b64decode(content_string)
+    filetype = guess_filetype(filename)
+    if filetype in ['csv','tsv']:
+        f = io.StringIO(decoded.decode('utf-8'))
+    elif filetype=='excel':
+        f = io.BytesIO(decoded)
+    else:
+        # unrecognised filetype should be caught earlier
+        assert False
+
     try:
-        if 'csv' in filename:
-            # Assume that the user uploaded a CSV file
-            df = pd.read_csv(
-                io.StringIO(decoded.decode('utf-8')))
-        elif 'xls' in filename:
-            # Assume that the user uploaded an excel file
-            df = pd.read_excel(io.BytesIO(decoded))
+        data, sample_info, sample_info_types, field_info = \
+            parse_input(f, filetype=filetype)
     except Exception as e:
+        # TODO: show exception through browser
         print(e)
         raise
-    #print('Read dataframe:')
-    #print(df.columns)
-    #print(df)
-    return df
+
+    print('Read dataframe:')
+    print(data.columns)
+    print(sample_info.columns)
+    print(sample_info_types.columns)
+    print(field_info.columns)
+
+    return (data, sample_info, sample_info_types, field_info)
 
 @app.callback(
     Output('filecache_timestamp', 'children'),
@@ -351,12 +385,19 @@ def parse_table(contents, filename):
      Input('upload_data', 'filename'),
      Input('upload_data', 'last_modified')],
     [State('session_id', 'children')])
-def save_file(contents, filename, last_modified, session_id):
+def save_data(contents, filename, last_modified, session_id):
     # write contents to file
     if contents is not None:
-        df = parse_table(contents, filename)
-        write_dataframe(session_id, df)
+        (data, sample_info, sample_info_types, field_info) = \
+            parse_table(contents, filename)
+        # We'll store objects separately for easier change of
+        # storage methods later, or backwards compatibility of objects
+        for (df, suffix) in zip(
+                [data, sample_info, sample_info_types, field_info],
+                ['data','sampleinfo','sampleinfotypes','fieldinfo']):
+            write_dataframe(session_id+'_'+suffix, df)
         return last_modified
+
 
 # Build controls list dynamically, based on available selectors at launch
 main_input_components = [Input('scale_selector','value'),
