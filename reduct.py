@@ -146,13 +146,6 @@ def make_pca_dropdowns(pca_dropdown_values=[], previous_x=None, previous_y=None)
     ]
     return new_html
 
-if args.colour_by_data:
-    colour_fields = [{'label':'None','value':'NONE'}] + \
-                    [{'label':val,'value':'SINF'+val} for val in list(sample_info.columns)] + \
-                    [{'label':val,'value':'DATA'+val} for val in list(data.columns)]
-else:
-    colour_fields = [{'label':'None','value':'NONE'}] + \
-                    [{'label':val,'value':'SINF'+val} for val in list(sample_info.columns)]
 
 
 
@@ -201,7 +194,7 @@ colour_selector = html.Div(id='colour_selector', children=[
     html.Label('Colour points by'),
     dcc.Dropdown(
         id='colour_dropdown',
-        options = colour_fields,
+        options = [{'label':'None','value':'NONE'}],
         value='NONE'
     )
 ])
@@ -546,6 +539,32 @@ def update_tsne(_n_clicks, perplexity, scale, missing_data_method, numeric_fill,
 
 
 @app.callback(
+    Output('colour_dropdown', 'options'),
+    [Input('filecache_timestamp','children')],
+    state=[State('session_id', 'children')])
+def update_colour_dropdown(timestamp, session_id):
+    sample_info = read_dataframe(session_id+'_sampleinfo', timestamp)
+    if args.colour_by_data:
+        # FieldInfo is faster to get than data itself
+        field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
+        colour_fields = [{'label':'None','value':'NONE'}] + \
+                        [{'label':val,'value':'SINF'+val} for val in list(sample_info.columns)] + \
+                        [{'label':val,'value':'DATA'+val} for val in list(field_info.index)]
+    else:
+        colour_fields = [{'label':'None','value':'NONE'}] + \
+                        [{'label':val,'value':'SINF'+val} for val in list(sample_info.columns)]
+    return colour_fields
+
+@app.callback(
+    Output('colour_dropdown', 'value'),
+    [Input('colour_dropdown', 'options')]
+)
+def update_colour_dropdown_selection(_options):
+    # If dropdown list ever changes, reset to no colour
+    return 'NONE'
+
+
+@app.callback(
     Output('pca_axes_selectors','children'),
     [Input('hidden_data_pca','children')],
     state=[State('x_dropdown','value'), State('y_dropdown','value')] # previous state
@@ -598,13 +617,15 @@ def update_pca_plot(x_field, y_field, colour_field_selection, stored_data):
 @app.callback(
     Output('mds_plot','figure'),
     main_input_components +
-    [Input('colour_dropdown','value'), Input('filecache_timestamp','children')],
-    state=[State('session_id','children')]
+    [Input('colour_dropdown','value')],
+    state=[State('session_id','children'),
+           State('filecache_timestamp','children')]
 )
 def update_mds_plot(scale, missing_data_method, numeric_fill, categorical_fill,
-                    selected_fields, colour_field_selection, timestamp,
-                    session_id):
+                    selected_fields, colour_field_selection,
+                    session_id, timestamp):
     print("Updating MDS figure")
+    print("Colour field:",colour_field_selection)
 
     transformed = get_mds_data(
         session_id, timestamp, scale, selected_fields,
@@ -710,9 +731,9 @@ def create_plot(x_field, y_field, transformed, data,
                               mode='markers', marker=dict(size=10, opacity=0.7),
                               name='Unknown', text=hover_text[rows]))
             # points with a colour field value - in category order if pandas category, else sorted
-            if pd.core.common.is_categorical_dtype(colour_values):
+            try:
                 unique_colour_values = colour_values.cat.categories
-            else:
+            except AttributeError:  # no .cat accessor, not categorical
                 unique_colour_values = sorted(colour_values.unique(), key=lambda x:str(x))
             for value in unique_colour_values:
                 rows = colour_values == value
