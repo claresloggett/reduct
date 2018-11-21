@@ -246,7 +246,7 @@ def define_tab_li(id, target, text, active=False):
                 children=[
                 html.A(id=id,
                        className=classes,
-                       href=target,
+                       href='#'+target,
                        children=text,
                        **{'data-toggle': 'tab'})
                 ])
@@ -271,10 +271,10 @@ def serve_layout():
                     ]),
                 #  plot_type_selector
                 html.Ul(id='tabs',className="nav nav-tabs",children=[
-                    define_tab_li(id="upload_tab", target="#upload_panel", text="Upload", active=True),
-                    define_tab_li(id="pca_tab", target="#pca_panel", text="PCA"),
-                    define_tab_li(id="mds_tab", target="#mds_panel", text="MDS"),
-                    define_tab_li(id="tsne_tab", target="#tsne_panel", text="tSNE")
+                    define_tab_li(id="upload_tab", target="upload_panel", text="Upload", active=True),
+                    define_tab_li(id="pca_tab", target="pca_panel", text="PCA"),
+                    define_tab_li(id="mds_tab", target="mds_panel", text="MDS"),
+                    define_tab_li(id="tsne_tab", target="tsne_panel", text="tSNE")
                 ])
             ]),
 
@@ -286,7 +286,7 @@ def serve_layout():
             ]),
 
             html.Div(id='main_content',className='tab-content',children=[
-                html.Div(id='upload_panel', className='tab-pane', children=[
+                html.Div(id='upload_panel', className='tab-pane active', children=[
                     html.Div(id='upload_box', children=[
                         dcc.Upload(id='upload_data',
                         children=html.Div([
