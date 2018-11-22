@@ -91,10 +91,6 @@ cache = Cache(app.server, config={
 
 # *** Define UI and other layout elements ***
 
-hidden_data_tsne = html.Div(id='hidden_data_tsne',
-                           children="",
-                           style={'display':'none'})
-
 dummy_input = html.Div(id='dummy_input',
               children=None,
               style={'display':'none'})
@@ -220,7 +216,7 @@ tsne_controls = html.Div(id='tsne_controls',children=[
                    marks = {n:str(n) for n in [1,20,40,60,80,100]},
                    updatemode='drag'),
     ]),
-    html.Button('Recalculate tSNE', id='tsne_button')
+    html.Button('Calculate tSNE', id='tsne_button')
 ])
 
 def define_tab_li(id, target, text, active=False):
@@ -245,7 +241,6 @@ def serve_layout():
             html.Div(session_id, id='session_id', style={'display': 'none'}),
             html.Div(id='filecache_timestamp', style={'display': 'none'}),
 
-            hidden_data_tsne,
             dummy_input,
 
             html.Div(id='header_bar', children=[
@@ -446,7 +441,23 @@ def get_mds_data(session_id, timestamp, scale, selected_fields,
 
     return transformed
 
+@cache.memoize()
+def get_tsne_data(session_id, timestamp, perplexity, scale, selected_fields,
+        fill_method, numeric_fill, categorical_fill):
+    """
+    Get completed dataset and call tsne_transform.
+    Return transformed data.
+    Memoised by completion settings, tSNE options, session and
+    upload timestamp.
+    """
+    data = get_completed_data(session_id, timestamp, selected_fields,
+        fill_method, numeric_fill, categorical_fill)
+    field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
+    tsne, transformed, original_fields = tsne_transform(
+        data, field_info.loc[data.columns,:],
+        scale=scale, perplexity=perplexity)
 
+    return transformed
 
 
 # Build controls list dynamically, based on available selectors at launch
@@ -473,44 +484,6 @@ else:
 )
 def show_perplexity(perplexity):
     return 'Perplexity: {}'.format(perplexity)
-
-@app.callback(
-    Output('hidden_data_tsne', 'children'),
-    [Input('tsne_button', 'n_clicks')],
-    state=[State('tsne_perplexity_slider','value')] + main_input_components_state
-)
-def update_tsne(_n_clicks, perplexity, scale, missing_data_method, numeric_fill, categorical_fill, selected_fields):
-    """
-    Re-do the tSNE embedding based on tSNE parameters (perplexity),
-    included fields and missing data handling.
-    Store in a hidden div.
-    Logical order of data processing is:
-    - filter out any fields the user has manually deselected
-    - apply chosen missing data method
-    - tSNE
-    """
-    print("Updating tSNE data")
-    if not args.show_fieldtable:
-        assert selected_fields is None
-        selected_fields = list(range(data.shape[1]))
-    data_completed, fields_kept, samples_kept = complete_missing_data(
-                                         data.iloc[:,selected_fields],
-                                         field_info.iloc[selected_fields,:],
-                                         missing_data_method,
-                                         numeric_fill, categorical_fill)
-    # fields_kept is a boolean over fields_info.index[selected_fields].
-    # samples_kept and fields_kept, plus selected_fields, are
-    # already applied in calculating data_completed.
-    # However we need to subset field_info.
-    # Could reapply selected_fields and apply fields_kept,
-    # or can just take data_completed.columns
-    tsne, transformed, original_fields = tsne_transform(data_completed,
-                                     field_info.loc[data_completed.columns,:],
-                                     scale=scale,
-                                     perplexity=perplexity)
-    print("tSNE results shape {}".format(transformed.shape))
-    return json.dumps({'transformed': transformed.to_json(orient='split'),
-                       'original_fields': original_fields})
 
 
 @app.callback(
@@ -648,23 +621,44 @@ def update_mds_plot(scale, missing_data_method, numeric_fill, categorical_fill,
 
     return figure
 
+
 @app.callback(
     Output('tsne_plot','figure'),
-    [Input('hidden_data_tsne', 'children'), Input('colour_dropdown','value')]
+    [Input('tsne_button', 'n_clicks'), Input('colour_dropdown','value')],
+    state=[State('tsne_perplexity_slider','value')]
+          + main_input_components_state +
+          [State('session_id','children'),
+           State('filecache_timestamp', 'children')]
 )
-def update_tsne_plot(stored_data, colour_field_selection):
+def update_tsne_plot(n_clicks, colour_field_selection,
+        perplexity, scale, missing_data_method, numeric_fill,
+        categorical_fill, selected_fields, session_id, timestamp):
     # If storing transformed data this way, ought to memoise calculation
     print("Updating tSNE figure")
 
+    transformed = get_tsne_data(
+        session_id, timestamp, perplexity, scale, selected_fields,
+        missing_data_method, numeric_fill, categorical_fill)
+
+    data = read_dataframe(session_id + '_data', timestamp)
+    field_info = read_dataframe(session_id + '_fieldinfo', timestamp)
+    sample_info = read_dataframe(session_id + '_sampleinfo', timestamp)
+    sample_info_types = read_dataframe(session_id + '_sampleinfotypes', timestamp)
+
     figure = create_plot(x_field='A',
                          y_field='B',
-                         stored_data=stored_data,
+                         transformed=transformed,
+                         data=data,
+                         sample_info=sample_info,
+                         sample_info_types=sample_info_types,
+                         field_info=field_info,
                          colour_field_selection=colour_field_selection,
                          plot_title='tSNE',
                          xaxis_label='tSNE dim A',
                          yaxis_label='tSNE dim B')
 
     return figure
+
 
 def create_plot(x_field, y_field, transformed, data,
                 sample_info, sample_info_types, field_info,
