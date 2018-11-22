@@ -91,14 +91,6 @@ cache = Cache(app.server, config={
 
 # *** Define UI and other layout elements ***
 
-hidden_data_pca = html.Div(id='hidden_data_pca',
-                           children="",
-                           style={'display':'none'})
-
-hidden_data_mds = html.Div(id='hidden_data_mds',
-                           children="",
-                           style={'display':'none'})
-
 hidden_data_tsne = html.Div(id='hidden_data_tsne',
                            children="",
                            style={'display':'none'})
@@ -253,8 +245,6 @@ def serve_layout():
             html.Div(session_id, id='session_id', style={'display': 'none'}),
             html.Div(id='filecache_timestamp', style={'display': 'none'}),
 
-            hidden_data_pca,
-            hidden_data_mds,
             hidden_data_tsne,
             dummy_input,
 
@@ -419,6 +409,26 @@ def get_completed_data(session_id, timestamp, selected_fields, method,
     return completed
 
 @cache.memoize()
+def get_pca_data(session_id, timestamp, scale, selected_fields,
+        fill_method, numeric_fill, categorical_fill):
+    """
+    Get completed dataset and call pca_transform.
+    Return transformed data.
+    Memoised by completion settings, PCA options, session and
+    upload timestamp.
+    """
+    data = get_completed_data(session_id, timestamp, selected_fields,
+        fill_method, numeric_fill, categorical_fill)
+    field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
+
+    pca, transformed, components, original_fields = pca_transform(
+        data, field_info.loc[data.columns,:],
+        max_pcs=args.num_pcs, scale=scale)
+
+    return (transformed, components,
+            original_fields, list(pca.explained_variance_ratio_))
+
+@cache.memoize()
 def get_mds_data(session_id, timestamp, scale, selected_fields,
         fill_method, numeric_fill, categorical_fill):
     """
@@ -436,6 +446,9 @@ def get_mds_data(session_id, timestamp, scale, selected_fields,
 
     return transformed
 
+
+
+
 # Build controls list dynamically, based on available selectors at launch
 main_input_components = [Input('scale_selector','value'),
                          Input('missing_data_selector','value'),
@@ -451,44 +464,6 @@ if args.show_fieldtable:
 else:
     main_input_components.append(Input('dummy_input','children'))
     main_input_components_state.append(State('dummy_input','children'))
-
-@app.callback(
-    Output('hidden_data_pca', 'children'),
-    main_input_components
-)
-def update_pca(scale, missing_data_method, numeric_fill, categorical_fill, selected_fields):
-    """
-    Re-do the PCA based on included fields and missing data handling.
-    Store in a hidden div.
-    Logical order of data processing is:
-    - filter out any fields the user has manually deselected
-    - apply chosen missing data method
-    - PCA
-    """
-    print("Updating PCA data")
-    if not args.show_fieldtable:
-        assert selected_fields is None
-        selected_fields = list(range(data.shape[1]))
-    data_completed, fields_kept, samples_kept = complete_missing_data(
-                                         data.iloc[:,selected_fields],
-                                         field_info.iloc[selected_fields,:],
-                                         missing_data_method,
-                                         numeric_fill, categorical_fill)
-    # fields_kept is a boolean over fields_info.index[selected_fields].
-    # samples_kept and fields_kept, plus selected_fields, are
-    # already applied in calculating data_completed.
-    # However we need to subset field_info.
-    # Could reapply selected_fields and apply fields_kept,
-    # or can just take data_completed.columns
-    pca, transformed, components, original_fields = pca_transform(data_completed,
-                                     field_info.loc[data_completed.columns,:],
-                                     max_pcs=args.num_pcs,
-                                     scale=scale)
-    print("PCA results shape {}".format(transformed.shape))
-    return json.dumps({'transformed': transformed.to_json(orient='split'),
-                       'variance_ratios': list(pca.explained_variance_ratio_),
-                       'components': components.to_json(),
-                       'original_fields': original_fields})
 
 
 # TODO: allow user to set a graph title? or a dataset title?
@@ -564,22 +539,25 @@ def update_colour_dropdown_selection(_options):
     return 'NONE'
 
 
+# TODO: this callback only needs so many inputs because we display variance
+# so long as cache doesn't fill up, this is "free"
+# could lose this feature, simplify and depend only on dimensions of dataset
 @app.callback(
     Output('pca_axes_selectors','children'),
-    [Input('hidden_data_pca','children')],
-    state=[State('x_dropdown','value'), State('y_dropdown','value')] # previous state
+    [Input('filecache_timestamp','children')] + main_input_components,
+    state=[State('session_id','children'),
+    State('x_dropdown','value'), State('y_dropdown','value')] # previous state
 )
-def update_pca_axes(transformed_data_json, previous_x, previous_y):
+def update_pca_axes(timestamp, scale, missing_data_method, numeric_fill,
+        categorical_fill, selected_fields, session_id, previous_x, previous_y):
     """
     When PCA has been updated, re-generate the lists of available axes.
     """
     print("Updating PCA axes dropdowns")
-    if transformed_data_json=="":
-        print("Data not initialised yet; skipping axes callback")
-        return make_pca_dropdowns()
-    stored_data = json.loads(transformed_data_json)
-    transformed = pd.read_json(stored_data['transformed'], orient='split')
-    variance_ratios = stored_data['variance_ratios']
+    transformed, _c, _of, variance_ratios = get_pca_data(
+        session_id, timestamp, scale, selected_fields,
+        missing_data_method, numeric_fill, categorical_fill)
+
     pca_dropdown_values = [{'label':"{0} ({1:.3} of variance)".format(n,v), 'value':n}
                            for (n,v) in zip(transformed.columns,variance_ratios)]
     # If old selected compontents not available,
@@ -591,19 +569,38 @@ def update_pca_axes(transformed_data_json, previous_x, previous_y):
 
     return make_pca_dropdowns(pca_dropdown_values, previous_x, previous_y)
 
+# Currently does not need to trigger on main_input_components
+# as that trigger will come in via x_dropdown and y_dropdown
 @app.callback(
     Output('pca_plot','figure'),
     [Input('x_dropdown','value'), Input('y_dropdown','value'),
      Input('colour_dropdown','value')],
-    state=[State('hidden_data_pca', 'children')]
+    state=main_input_components_state +
+          [State('session_id','children'),
+           State('filecache_timestamp','children')]
 )
-def update_pca_plot(x_field, y_field, colour_field_selection, stored_data):
-    # If storing transformed data this way, ought to memoise PCA calculation
+def update_pca_plot(x_field, y_field, colour_field_selection,
+    scale, missing_data_method, numeric_fill, categorical_fill,
+    selected_fields, session_id, timestamp):
     print("Updating PCA figure")
+
+    transformed, _c, _of, _vr = get_pca_data(
+        session_id, timestamp, scale, selected_fields,
+        missing_data_method, numeric_fill, categorical_fill)
+
+    # TODO: we are reading and passing entire original data which is only used if hover_data
+    data = read_dataframe(session_id + '_data', timestamp)
+    field_info = read_dataframe(session_id + '_fieldinfo', timestamp)
+    sample_info = read_dataframe(session_id + '_sampleinfo', timestamp)
+    sample_info_types = read_dataframe(session_id + '_sampleinfotypes', timestamp)
 
     figure = create_plot(x_field=x_field,
                          y_field=y_field,
-                         stored_data=stored_data,
+                         transformed=transformed,
+                         data=data,
+                         sample_info=sample_info,
+                         sample_info_types=sample_info_types,
+                         field_info=field_info,
                          colour_field_selection=colour_field_selection,
                          plot_title='PCA',
                          xaxis_label=x_field,
@@ -752,23 +749,28 @@ def create_plot(x_field, y_field, transformed, data,
     }
     return figure
 
-
 @app.callback(
     Output('pc_composition','figure'),
-    [Input('x_dropdown','value'), Input('y_dropdown','value')],
-    state=[State('hidden_data_pca', 'children')]
+    [Input('x_dropdown','value'), Input('y_dropdown','value')]
+    + main_input_components,
+    state=[State('session_id','children'),
+           State('filecache_timestamp','children')]
 )
-def update_pc_composition(x_field, y_field, stored_data):
+def update_pc_composition(x_field, y_field, scale, missing_data_method,
+        numeric_fill, categorical_fill, selected_fields,
+        session_id, timestamp):
     print("Updating PC composition graph")
-    if stored_data=="":
-        print("Data not initialised yet; skipping PC composition callback")
-        return {'data': [], 'layout': {'title': 'Calculating plot...'}}
+
     if x_field is None or y_field is None:
         print("Axes dropdowns not initialised yet; skipping PC composition callback")
         return {'data': [], 'layout': {'title': 'Calculating plot...'}}
-    stored_json = json.loads(stored_data)
-    components = pd.read_json(stored_json['components'])
-    original_fields = stored_json['original_fields']
+
+    _t, components, original_fields, _vr = get_pca_data(
+        session_id, timestamp, scale, selected_fields,
+        missing_data_method, numeric_fill, categorical_fill)
+
+    field_info = read_dataframe(session_id + '_fieldinfo', timestamp)
+
     pcx = components[x_field].pow(2)
     pcy = components[y_field].pow(2)
 
