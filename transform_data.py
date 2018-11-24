@@ -227,8 +227,11 @@ def tsne_transform(data, field_info,
     with the lowest objective function will be returned. Higher n_runs gives
     more reliability but slower operation.
     """
-    if pca_dims is not None and pca_dims < data.shape[1]:
-        print("Carrying out PCA prior to tSNE: {} -> {}".format(data.shape[1],pca_dims))
+    # Can't do PCA to moderately high dimension if there are few samples
+    # For now try not doing PCA at all if there are few samples
+    if pca_dims is not None and pca_dims < data.shape[1] and pca_dims < data.shape[0]:
+        print("Carrying out PCA prior to tSNE: {} -> {}".format(data.shape[1],
+                                                                pca_dims))
         pca = PCA(pca_dims)
         compressed = pca.fit_transform(data.values)
     else:
