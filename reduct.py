@@ -2,6 +2,7 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output, State, Event
+from dash.exceptions import PreventUpdate
 
 import dash_table_experiments
 import flask
@@ -327,6 +328,7 @@ def parse_table(contents, filename):
 
     return (data, sample_info, sample_info_types, field_info)
 
+
 @app.callback(
     Output('filecache_timestamp', 'children'),
     [Input('upload_data', 'contents'),
@@ -335,7 +337,11 @@ def parse_table(contents, filename):
     [State('session_id', 'children')])
 def save_data(contents, filename, last_modified, session_id):
     # write contents to file
-    if contents is not None:
+    print("Callback: save data")
+    if contents is None:
+        print("Skipping")
+        raise PreventUpdate()
+    else:
         (data, sample_info, sample_info_types, field_info) = \
             parse_table(contents, filename)
         # We'll store objects separately for easier change of
@@ -372,6 +378,7 @@ def get_completed_data(session_id, timestamp, selected_fields, method,
 
     return completed
 
+
 @cache.memoize()
 def get_pca_data(session_id, timestamp, scale, selected_fields,
         fill_method, numeric_fill, categorical_fill):
@@ -392,6 +399,7 @@ def get_pca_data(session_id, timestamp, scale, selected_fields,
     return (transformed, components,
             original_fields, list(pca.explained_variance_ratio_))
 
+
 @cache.memoize()
 def get_mds_data(session_id, timestamp, scale, selected_fields,
         fill_method, numeric_fill, categorical_fill):
@@ -409,6 +417,7 @@ def get_mds_data(session_id, timestamp, scale, selected_fields,
         data, field_info.loc[data.columns,:], scale=scale)
 
     return transformed
+
 
 @cache.memoize()
 def get_tsne_data(session_id, timestamp, perplexity, scale, selected_fields,
@@ -438,18 +447,17 @@ main_input_components_state = [State('scale_selector','value'),
                                State('missing_data_selector','value'),
                                State('missing_numeric_fill','value'),
                                State('missing_categorical_fill','value')]
-
 # Currently no field_selector_table
 main_input_components.append(Input('dummy_input','children'))
 main_input_components_state.append(State('dummy_input','children'))
 
 
-# TODO: allow user to set a graph title? or a dataset title?
 @app.callback(
     Output('tsne_perplexity_label', 'children'),
     [Input('tsne_perplexity_slider', 'value')]
 )
 def show_perplexity(perplexity):
+    print("Callback: show perplexity")
     return 'Perplexity: {}'.format(perplexity)
 
 
@@ -458,6 +466,12 @@ def show_perplexity(perplexity):
     [Input('filecache_timestamp','children')],
     state=[State('session_id', 'children')])
 def update_colour_dropdown(timestamp, session_id):
+    print('Callback: Update colour dropdown')
+
+    if timestamp is None:
+        print("No timestamp, returning list of None only")
+        return [{'label':'None','value':'NONE'}]
+
     sample_info = read_dataframe(session_id+'_sampleinfo', timestamp)
     if args.colour_by_data:
         # FieldInfo is faster to get than data itself
@@ -475,6 +489,7 @@ def update_colour_dropdown(timestamp, session_id):
     [Input('colour_dropdown', 'options')]
 )
 def update_colour_dropdown_selection(_options):
+    print("Callback: update colour selection")
     # If dropdown list ever changes, reset to no colour
     return 'NONE'
 
@@ -493,7 +508,10 @@ def update_pca_axes(timestamp, scale, missing_data_method, numeric_fill,
     """
     When PCA has been updated, re-generate the lists of available axes.
     """
-    print("Updating PCA axes dropdowns")
+    print("Callback: Updating PCA axes dropdowns")
+    if timestamp is None:
+        print("Skipping")
+        raise PreventUpdate()()
     transformed, _c, _of, variance_ratios = get_pca_data(
         session_id, timestamp, scale, selected_fields,
         missing_data_method, numeric_fill, categorical_fill)
@@ -522,7 +540,13 @@ def update_pca_axes(timestamp, scale, missing_data_method, numeric_fill,
 def update_pca_plot(x_field, y_field, colour_field_selection,
     scale, missing_data_method, numeric_fill, categorical_fill,
     selected_fields, session_id, timestamp):
-    print("Updating PCA figure")
+    print("Callback: Updating PCA figure")
+
+    if timestamp is None or x_field is None:
+        print("Skipping")
+        raise PreventUpdate()
+
+    print(x_field, y_field)
 
     transformed, _c, _of, _vr = get_pca_data(
         session_id, timestamp, scale, selected_fields,
@@ -561,8 +585,12 @@ def update_pca_plot(x_field, y_field, colour_field_selection,
 def update_mds_plot(scale, missing_data_method, numeric_fill, categorical_fill,
                     selected_fields, colour_field_selection,
                     session_id, timestamp):
-    print("Updating MDS figure")
+    print("Callback: Updating MDS figure")
     print("Colour field:",colour_field_selection)
+
+    if timestamp is None:
+        print("Skipping")
+        raise PreventUpdate()
 
     transformed = get_mds_data(
         session_id, timestamp, scale, selected_fields,
@@ -601,7 +629,13 @@ def update_tsne_plot(n_clicks, colour_field_selection,
         perplexity, scale, missing_data_method, numeric_fill,
         categorical_fill, selected_fields, session_id, timestamp):
     # If storing transformed data this way, ought to memoise calculation
-    print("Updating tSNE figure")
+    print("Callback: Updating tSNE figure")
+    #print("n_clicks",n_clicks)
+
+    # Don't draw the graph till there is data and button clicked
+    if timestamp is None or n_clicks is None or n_clicks==0:
+        print("Skipping")
+        raise PreventUpdate()
 
     transformed = get_tsne_data(
         session_id, timestamp, perplexity, scale, selected_fields,
@@ -720,7 +754,11 @@ def create_plot(x_field, y_field, transformed, data,
 def update_pc_composition(x_field, y_field, scale, missing_data_method,
         numeric_fill, categorical_fill, selected_fields,
         session_id, timestamp):
-    print("Updating PC composition graph")
+    print("Callback: Updating PC composition graph")
+
+    if timestamp is None:
+        print("Skipping")
+        raise PreventUpdate()
 
     if x_field is None or y_field is None:
         print("Axes dropdowns not initialised yet; skipping PC composition callback")
@@ -747,14 +785,14 @@ def update_pc_composition(x_field, y_field, scale, missing_data_method,
     for (field, sqvalue) in pcy.items():
         pcy_original.loc[original_fields[field]] += sqvalue
 
-    xlabels,xsizes = zip(*[(field, sqvalue)
-                      for (field, sqvalue)
-                      in pcx_original.sort_values(ascending=False)[:5].items()
-                      if sqvalue > 0.01][::-1])
-    ylabels,ysizes = zip(*[(field, sqvalue)
-                      for (field, sqvalue)
-                      in pcy_original.sort_values(ascending=False)[:5].items()
-                      if sqvalue > 0.01][::-1])
+    xlabels, xsizes = zip(*[(field, sqvalue)
+                       for (field, sqvalue)
+                       in pcx_original.sort_values(ascending=False)[:5].items()
+                       if sqvalue > 0.01][::-1])
+    ylabels, ysizes = zip(*[(field, sqvalue)
+                       for (field, sqvalue)
+                       in pcy_original.sort_values(ascending=False)[:5].items()
+                       if sqvalue > 0.01][::-1])
 
     hovertext_x = ["; ".join(["{}={}".format(name,value) for (name,value) in field_info.loc[field,:].items()])
                       for field in xlabels]
@@ -790,6 +828,7 @@ def update_pc_composition(x_field, y_field, scale, missing_data_method,
 )
 def grey_fill_dropdowns(missing_data_method):
     """Grey/ungrey fill radio elements when they are being ignored/not ignored."""
+    print("Callback: grey fill dropdowns")
     if missing_data_method=='fill_values':
         return {}
     else:

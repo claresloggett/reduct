@@ -87,15 +87,26 @@ def parse_input(infile, separator=None, filetype='csv'):
                        and will be displayed by default on mouseover
     (M TBD for both fields and rows)
 
+    If separator is:
+        - None : will use default separator for file type
+        - 'auto' : Pandas will try to auto-detect the separator (this is slower)
+        - anything else : specified separator will be passed in and used by Pandas
+
     Return (data, sample_info, sample_info_types, field_info).
     """
+    kwargs = {'header':0}
+    if separator=='auto':
+        kwargs['sep'] = None
+    elif separator is not None:
+        kwargs['sep'] = separator
+
     if filetype=='csv':
-        df = pd.read_csv(infile, sep=separator, header=0)
+        df = pd.read_csv(infile, **kwargs)
     elif filetype=='tsv':
         # or could set separator
-        df = pd.read_table(infile, sep=separator, header=0)
+        df = pd.read_table(infile, **kwargs)
     elif filetype=='excel':
-        df = pd.read_excel(infile, header=0)
+        df = pd.read_excel(infile, **kwargs)
     else:
         raise ValueError(
             'Unrecognised file type {} passed to parse_input'.format(filetype))
