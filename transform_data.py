@@ -121,7 +121,7 @@ def one_hot(series, categories=None):
     encoded.index = vec.index
     return encoded
 
-def preprocess(data, field_info, scale):
+def preprocess(data, field_info, scale=False):
     """
     Apply pre-processing to data:
      - scaling of numeric fields
@@ -159,59 +159,57 @@ def preprocess(data, field_info, scale):
     return (encoded, original_fields)
 
 
-def pca_transform(data, field_info, max_pcs, scale=False):
+def pca_transform(data, field_info, max_pcs):
     """
     Apply PCA to the data. There must be no missing values.
+    Any preprocessing (scaling etc) should already have been carried out.
     Returns a tuple containing:
         the pca object,
         the transformed data,
-        the labelled components, and
-        a dict mapping one-hot-encoded field names to original fields.
+        the labelled components
     """
-
-    encoded, original_fields = preprocess(data, field_info, scale)
-
     # Do PCA
-    num_pcs = min(max_pcs, encoded.shape[1], encoded.shape[0])
+    num_pcs = min(max_pcs, data.shape[1], data.shape[0])
     pca = PCA(num_pcs)
-    transformed = pd.DataFrame(pca.fit_transform(encoded.values), index=encoded.index)
+    transformed = pd.DataFrame(pca.fit_transform(data.values),
+                               index=data.index)
     pca_names = ["PCA{}".format(n) for n in range(1,num_pcs+1)]
     transformed.columns = pca_names
 
     # Store components with consistent naming scheme
     components = pd.DataFrame(pca.components_.transpose())
     components.columns = pca_names
-    components.index = encoded.columns
+    components.index = data.columns
 
     # pca object, pca-transformed data, one-hot-encoded fieldnames, one-hot-encoded original fields
-    return (pca, transformed, components, original_fields)#, list(encoded.columns))
+    return (pca, transformed, components)#, list(encoded.columns))
 
-def mds_transform(data, field_info, scale=False):
+def mds_transform(data, field_info):
     """
     Apply distance-based MDS to the data. There must be no missing values.
+    Any preprocessing (scaling etc) should already have been carried out.
     Returns a tuple containing:
         the mds object,
         the transformed data, and
         a dict mapping one-hot-encoded field names to original fields.
     """
-    # Preprocess data
-    encoded, original_fields = preprocess(data, field_info, scale)
-
     mds = MDS(2)
-    transformed = pd.DataFrame(mds.fit_transform(encoded.values), index=encoded.index)
+    transformed = pd.DataFrame(mds.fit_transform(data.values),
+                               index=data.index)
     transformed.columns = ['MDS dim A','MDS dim B']
 
-    return (mds, transformed, original_fields)
+    return (mds, transformed)
 
-def tsne_transform(data, field_info, scale=False,
+
+def tsne_transform(data, field_info,
                    pca_dims=50, perplexity=20, learning_rate=200,
                    n_iter=1000, n_runs=1):
     """
-    Apply tSNE to the data.
+    Apply tSNE to the data. There must be no missing values.
+    Any preprocessing (scaling etc) should already have been carried out.
     Returns a tuple containing:
         the tsne object,
-        the transformed data, and
-        a dict mapping one-hot-encoded field names to original fields.
+        the transformed data
 
     For speed, PCA will be carried out first to reduce the number of dimensions
     if it is above pca_dims. Dimensionality will be reduced to pca_dims prior to
@@ -229,28 +227,28 @@ def tsne_transform(data, field_info, scale=False,
     with the lowest objective function will be returned. Higher n_runs gives
     more reliability but slower operation.
     """
-    # Preprocess data
-    encoded, original_fields = preprocess(data, field_info, scale)
-
     if pca_dims is not None and pca_dims < data.shape[1]:
         print("Carrying out PCA prior to tSNE: {} -> {}".format(data.shape[1],pca_dims))
         pca = PCA(pca_dims)
-        compressed = pca.fit_transform(encoded.values)
+        compressed = pca.fit_transform(data.values)
     else:
-        compressed = encoded.values
+        compressed = data.values
 
     print("Performing tSNE")
-    tsne = TSNE(2, perplexity=perplexity, learning_rate=learning_rate, n_iter=n_iter)
+    tsne = TSNE(2, perplexity=perplexity, learning_rate=learning_rate,
+                n_iter=n_iter)
     tsne.fit(compressed)
     score = tsne.kl_divergence_
     print('KL-div',tsne.kl_divergence_)
     # Rerun if n_iter > 1:
     for i in range(n_runs-1):
-        new_tsne = TSNE(2, perplexity=perplexity, learning_rate=learning_rate, n_iter=n_iter)
+        new_tsne = TSNE(2, perplexity=perplexity,
+                        learning_rate=learning_rate, n_iter=n_iter)
         new_tsne.fit(compressed)
         print('KL-div',new_tsne.kl_divergence_)
         if new_tsne.kl_divergence_ < tsne.kl_divergence_:
             tsne = new_tsne
-    embedded = pd.DataFrame(tsne.embedding_, index=encoded.index, columns=['A','B'])
+    embedded = pd.DataFrame(tsne.embedding_, index=data.index,
+                            columns=['A','B'])
 
-    return (tsne, embedded, original_fields)
+    return (tsne, embedded)

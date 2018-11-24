@@ -22,7 +22,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 from ingest_data import parse_input
-from transform_data import complete_missing_data, pca_transform, mds_transform, tsne_transform
+from transform_data import complete_missing_data, preprocess, pca_transform, mds_transform, tsne_transform
 
 app_dir = os.getcwd()
 
@@ -380,6 +380,25 @@ def get_completed_data(session_id, timestamp, selected_fields, method,
 
 
 @cache.memoize()
+def get_preprocessed_data(session_id, timestamp, scale, selected_fields,
+                          fill_method, numeric_fill, categorical_fill):
+    """
+    Get completed dataset and call preprocess() to create
+    binary-encoded, scaled dataset.
+    Return preprocessed dataframe.
+    Memoised by completion and preprocessing settings,
+    session and upload timestamp.
+    """
+    data = get_completed_data(session_id, timestamp, selected_fields,
+        fill_method, numeric_fill, categorical_fill)
+    field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
+
+    encoded, original_fields = preprocess(data, field_info, scale)
+
+    return (encoded, original_fields)
+
+
+@cache.memoize()
 def get_pca_data(session_id, timestamp, scale, selected_fields,
         fill_method, numeric_fill, categorical_fill):
     """
@@ -388,13 +407,13 @@ def get_pca_data(session_id, timestamp, scale, selected_fields,
     Memoised by completion settings, PCA options, session and
     upload timestamp.
     """
-    data = get_completed_data(session_id, timestamp, selected_fields,
+    data, original_fields = get_preprocessed_data(session_id, timestamp, scale, selected_fields,
         fill_method, numeric_fill, categorical_fill)
     field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
 
-    pca, transformed, components, original_fields = pca_transform(
+    pca, transformed, components = pca_transform(
         data, field_info.loc[data.columns,:],
-        max_pcs=args.num_pcs, scale=scale)
+        max_pcs=args.num_pcs)
 
     return (transformed, components,
             original_fields, list(pca.explained_variance_ratio_))
@@ -409,12 +428,12 @@ def get_mds_data(session_id, timestamp, scale, selected_fields,
     Memoised by completion settings, MDS options, session and
     upload timestamp.
     """
-    data = get_completed_data(session_id, timestamp, selected_fields,
+    data, original_fields = get_preprocessed_data(session_id, timestamp, scale, selected_fields,
         fill_method, numeric_fill, categorical_fill)
     field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
     # TODO: we only really need transformed
-    mds, transformed, original_fields = mds_transform(
-        data, field_info.loc[data.columns,:], scale=scale)
+    mds, transformed = mds_transform(
+        data, field_info.loc[data.columns,:])
 
     return transformed
 
@@ -428,12 +447,13 @@ def get_tsne_data(session_id, timestamp, perplexity, scale, selected_fields,
     Memoised by completion settings, tSNE options, session and
     upload timestamp.
     """
-    data = get_completed_data(session_id, timestamp, selected_fields,
+    data, original_fields = get_preprocessed_data(session_id, timestamp, scale, selected_fields,
         fill_method, numeric_fill, categorical_fill)
     field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
-    tsne, transformed, original_fields = tsne_transform(
+
+    tsne, transformed = tsne_transform(
         data, field_info.loc[data.columns,:],
-        scale=scale, perplexity=perplexity)
+        perplexity=perplexity)
 
     return transformed
 
@@ -719,7 +739,8 @@ def create_plot(x_field, y_field, transformed, data,
             # points with missing values
             if colour_values.isnull().sum() > 0:
                 rows = colour_values.isnull()
-                traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
+                traces.append(go.Scatter(x=transformed.loc[rows,x_field],
+                                         y=transformed.loc[rows,y_field],
                               mode='markers', marker=dict(size=10, opacity=0.7),
                               name='Unknown', text=hover_text[rows]))
             # points with a colour field value - in category order if pandas category, else sorted
@@ -729,7 +750,8 @@ def create_plot(x_field, y_field, transformed, data,
                 unique_colour_values = sorted(colour_values.unique(), key=lambda x:str(x))
             for value in unique_colour_values:
                 rows = colour_values == value
-                traces.append(go.Scatter(x=transformed.loc[rows,x_field], y=transformed.loc[rows,y_field],
+                traces.append(go.Scatter(x=transformed.loc[rows,x_field],
+                                         y=transformed.loc[rows,y_field],
                               mode='markers', marker=dict(size=10, opacity=0.7),
                               name=value, text=hover_text[rows]))
 
@@ -794,10 +816,12 @@ def update_pc_composition(x_field, y_field, scale, missing_data_method,
                        in pcy_original.sort_values(ascending=False)[:5].items()
                        if sqvalue > 0.01][::-1])
 
-    hovertext_x = ["; ".join(["{}={}".format(name,value) for (name,value) in field_info.loc[field,:].items()])
-                      for field in xlabels]
-    hovertext_y = ["; ".join(["{}={}".format(name,value) for (name,value) in field_info.loc[field,:].items()])
-                      for field in ylabels]
+    hovertext_x = ["; ".join(["{}={}".format(name,value)
+                        for (name,value) in field_info.loc[field,:].items()])
+                   for field in xlabels]
+    hovertext_y = ["; ".join(["{}={}".format(name,value)
+                        for (name,value) in field_info.loc[field,:].items()])
+                   for field in ylabels]
 
     x_bargraph = go.Bar(y=xlabels, x=xsizes,
                         text=hovertext_x,
