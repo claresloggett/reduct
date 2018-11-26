@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.manifold import MDS, TSNE
+from umap import UMAP
 
 # TODO: decide when calling PCA whether to treat OrderedCategorical as
 #  unordered, or effectively numeric (but treat as categorical for colouring!).
@@ -168,6 +169,7 @@ def pca_transform(data, field_info, max_pcs):
         the transformed data,
         the labelled components
     """
+    print("Performing PCA")
     # Do PCA
     num_pcs = min(max_pcs, data.shape[1], data.shape[0])
     pca = PCA(num_pcs)
@@ -182,6 +184,7 @@ def pca_transform(data, field_info, max_pcs):
     components.index = data.columns
 
     # pca object, pca-transformed data, one-hot-encoded fieldnames, one-hot-encoded original fields
+    print("PCA calc done")
     return (pca, transformed, components)#, list(encoded.columns))
 
 def mds_transform(data, field_info):
@@ -193,16 +196,18 @@ def mds_transform(data, field_info):
         the transformed data, and
         a dict mapping one-hot-encoded field names to original fields.
     """
+    print("Performing MDS")
     mds = MDS(2)
     transformed = pd.DataFrame(mds.fit_transform(data.values),
                                index=data.index)
     transformed.columns = ['MDS dim A','MDS dim B']
 
+    print("MDS calc done")
     return (mds, transformed)
 
 
 def tsne_transform(data, field_info,
-                   pca_dims=50, perplexity=20, learning_rate=200,
+                   pca_dims=50, perplexity=10, learning_rate=200,
                    n_iter=1000, n_runs=1):
     """
     Apply tSNE to the data. There must be no missing values.
@@ -252,6 +257,46 @@ def tsne_transform(data, field_info,
         if new_tsne.kl_divergence_ < tsne.kl_divergence_:
             tsne = new_tsne
     embedded = pd.DataFrame(tsne.embedding_, index=data.index,
-                            columns=['A','B'])
+                            columns=['tSNE dim A','tSNE dim B'])
 
+    print("tSNE calc done")
     return (tsne, embedded)
+
+# TODO: min_dist should perhaps be controlled on a log scale
+# TODO: do we need the option of multiple runs, like tSNE?
+# TODO: might want to allow supervised mode using sample info
+def umap_transform(data, field_info,
+                   n_neighbors=10, min_dist=0.1):
+    """
+    Apply UMAP to the data. There must be no missing values.
+    Any preprocessing (scaling etc) should already have been carried out.
+    Returns a tuple containing:
+        the umap object,
+        the transformed data
+
+    From the UMAP docs:
+
+    n_neighbors: determines the number of neighboring points used in local
+    approximations of manifold structure. Larger values will result in more
+    global structure being preserved at the loss of detailed local structure.
+    In general this parameter should often be in the range 5 to 50, with a
+    choice of 10 to 15 being a sensible default.
+
+    min_dist: This controls how tightly the embedding is allowed compress
+    points together. Larger values ensure embedded points are more evenly
+    distributed, while smaller values allow the algorithm to optimise more
+    accurately with regard to local structure. Sensible values are in the
+    range 0.001 to 0.5, with 0.1 being a reasonable default.
+
+    For now, metric cannot be set - we use the default value.
+    """
+    print("Performing UMAP")
+
+    # default n_components is 2
+    umapr = UMAP(n_neighbors=n_neighbors, min_dist=min_dist)
+    transformed = pd.DataFrame(umapr.fit_transform(data.values),
+                               index=data.index)
+    transformed.columns = ['UMAP dim A','UMAP dim B']
+
+    print("UMAP calc done")
+    return (umapr, transformed)

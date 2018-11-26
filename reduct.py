@@ -22,7 +22,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 from ingest_data import parse_input
-from transform_data import complete_missing_data, preprocess, pca_transform, mds_transform, tsne_transform
+from transform_data import complete_missing_data, preprocess, pca_transform, mds_transform, tsne_transform, umap_transform
 
 def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colour_by_data):
     '''
@@ -37,12 +37,12 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
         'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js'
     ]
 
-    # will also automatically serve assets/ folder
     external_css = [
         'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css',
         'https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css'
     ]
 
+    # will also automatically serve assets/ folder
     app = dash.Dash(
         __name__,
         external_scripts=external_scripts,
@@ -156,6 +156,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
     pca_plot = dcc.Graph(id='pca_plot', animate=True)
     mds_plot = dcc.Graph(id='mds_plot', animate=True)
     tsne_plot = dcc.Graph(id='tsne_plot', animate=True)
+    umap_plot = dcc.Graph(id='umap_plot', animate=True)
 
     pca_extra_stuff = html.Div(id='pca_extra_stuff',children=[
         dcc.Graph(id='pc_composition')
@@ -176,6 +177,30 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                        updatemode='drag'),
         ]),
         html.Button('Calculate tSNE', id='tsne_button')
+    ])
+
+    default_nneighbors = 10
+    default_mindist = 0.1
+    umap_controls = html.Div(id='umap_controls',children=[
+        html.Div([
+            html.Label("Num neighbors: {}".format(default_nneighbors),
+                       id='umap_nneighbors_label',
+                       style={'display':'inline-block'}),
+            dcc.Slider(id='umap_nneighbors_slider',
+                       min=1, max=100, step=1, value=default_nneighbors,
+                       marks = {n:str(n) for n in [1,20,40,60,80,100]},
+                       updatemode='mouseup'),
+        ]),
+        html.Div([
+            html.Label("Min dist: {}".format(default_mindist),
+                       id='umap_mindist_label',
+                       style={'display':'inline-block'}),
+            dcc.Slider(id='umap_mindist_slider',
+                       min=0.01, max=0.5, step=0.01, value=default_mindist,
+                       marks = {n:str(n) for n in [0,0.1,0.2,0.3,0.4,0.5]},
+                       updatemode='mouseup'),
+        ])
+        # Try with no button and mouseup, for now
     ])
 
     def define_tab_li(id, target, text, active=False):
@@ -211,6 +236,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                         define_tab_li(id="upload_tab", target="upload_panel", text="Upload", active=True),
                         define_tab_li(id="pca_tab", target="pca_panel", text="PCA"),
                         define_tab_li(id="mds_tab", target="mds_panel", text="MDS"),
+                        define_tab_li(id="umap_tab", target="umap_panel", text="UMAP"),
                         define_tab_li(id="tsne_tab", target="tsne_panel", text="tSNE")
                     ])
                 ]),
@@ -242,6 +268,11 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                     html.Div(id='mds_panel', className='tab-pane', children=[
                         #data_info(),
                         mds_plot
+                    ]),
+                    html.Div(id='umap_panel', className='tab-pane', children=[
+                        #data_info(),
+                        umap_controls,
+                        umap_plot
                     ]),
                     html.Div(id='tsne_panel', className='tab-pane', children=[
                         #data_info(),
@@ -445,6 +476,25 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
         return transformed
 
+    @cache.memoize()
+    def get_umap_data(session_id, timestamp, n_neighbors, min_dist,
+            scale, selected_fields, fill_method, numeric_fill, categorical_fill):
+        """
+        Get completed dataset and call umap_transform.
+        Return transformed data.
+        Memoised by completion settings, tSNE options, session and
+        upload timestamp.
+        """
+        data, original_fields = get_preprocessed_data(session_id, timestamp, scale, selected_fields,
+            fill_method, numeric_fill, categorical_fill)
+        field_info = read_dataframe(session_id+'_fieldinfo', timestamp)
+
+        umap, transformed = umap_transform(
+            data, field_info.loc[data.columns,:],
+            n_neighbors=n_neighbors, min_dist=min_dist)
+
+        return transformed
+
 
     # Build controls list dynamically, based on available selectors at launch
     main_input_components = [Input('scale_selector','value'),
@@ -468,6 +518,21 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
         print("Callback: show perplexity")
         return 'Perplexity: {}'.format(perplexity)
 
+    @app.callback(
+        Output('umap_nneighbors_label', 'children'),
+        [Input('umap_nneighbors_slider', 'value')]
+    )
+    def show_num_neighbours(num_neighbors):
+        print("Callback: show num neighbors")
+        return 'Num neighbors: {}'.format(num_neighbors)
+
+    @app.callback(
+        Output('umap_mindist_label', 'children'),
+        [Input('umap_mindist_slider', 'value')]
+    )
+    def show_min_dist(min_dist):
+        print("Callback: show min dist")
+        return 'Min dist: {}'.format(min_dist)
 
     @app.callback(
         Output('colour_dropdown', 'options'),
@@ -626,6 +691,51 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
 
     @app.callback(
+        Output('umap_plot','figure'),
+        main_input_components +
+        [Input('colour_dropdown','value'),
+         Input('umap_nneighbors_slider','value'),
+         Input('umap_mindist_slider','value')],
+        state=[State('session_id','children'),
+               State('filecache_timestamp','children')]
+    )
+    def update_umap_plot(scale, missing_data_method, numeric_fill,
+                        categorical_fill, selected_fields,
+                        colour_field_selection, num_neighbors, min_dist,
+                        session_id, timestamp):
+        print("Callback: Updating UMAP figure")
+
+        if timestamp is None:
+            print("Skipping")
+            raise PreventUpdate()
+
+        transformed = get_umap_data(
+            session_id, timestamp, num_neighbors, min_dist,
+            scale, selected_fields,
+            missing_data_method, numeric_fill, categorical_fill)
+
+        # TODO: we are reading and passing entire original data which is only used if hover_data
+        data = read_dataframe(session_id + '_data', timestamp)
+        field_info = read_dataframe(session_id + '_fieldinfo', timestamp)
+        sample_info = read_dataframe(session_id + '_sampleinfo', timestamp)
+        sample_info_types = read_dataframe(session_id + '_sampleinfotypes', timestamp)
+
+        figure = create_plot(x_field='UMAP dim A',
+                             y_field='UMAP dim B',
+                             transformed=transformed,
+                             data=data,
+                             sample_info=sample_info,
+                             sample_info_types=sample_info_types,
+                             field_info=field_info,
+                             colour_field_selection=colour_field_selection,
+                             plot_title='UMAP',
+                             xaxis_label='UMAP dim A',
+                             yaxis_label='UMAP dim B')
+
+        return figure
+
+
+    @app.callback(
         Output('tsne_plot','figure'),
         [Input('tsne_button', 'n_clicks'), Input('colour_dropdown','value')],
         state=[State('tsne_perplexity_slider','value')]
@@ -654,8 +764,8 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
         sample_info = read_dataframe(session_id + '_sampleinfo', timestamp)
         sample_info_types = read_dataframe(session_id + '_sampleinfotypes', timestamp)
 
-        figure = create_plot(x_field='A',
-                             y_field='B',
+        figure = create_plot(x_field='tSNE dim A',
+                             y_field='tSNE dim B',
                              transformed=transformed,
                              data=data,
                              sample_info=sample_info,
@@ -848,6 +958,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
     return app
 
+
 # TODO: we'd like to properly configure cache to match redis config,
 # allow for filecache with directory, etc
 # Could use config file(s) that can be read by redis as well
@@ -873,6 +984,7 @@ def start_server(cachetype='simple', cachesize=100, num_pcs=10,
         colour_by_data=colour_by_data)
 
     return app.server
+
 
 if __name__ == '__main__':
     # Parse command-line
