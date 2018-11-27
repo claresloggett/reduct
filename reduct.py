@@ -97,6 +97,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
 
     general_plot_options = html.Div(id='general_plot_options',children=[
+        html.H4('Data Handling'),
         html.Label('Scale numeric fields', id='numericfields'),
         dcc.RadioItems(
             id='scale_selector',
@@ -105,8 +106,9 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
             value=False  # TODO: set default to True if any categorical fields?
         ),
 
+        html.H4('Missing Data'),
         html.Div(id='missing_data', children=[
-            html.Label("Missing data:"),
+            #html.Label("Missing data:"),
             dcc.RadioItems(id='missing_data_selector',
                 options=[{'label':"Drop fields with any missing values", 'value':'drop_fields'},
                          {'label':"Drop samples with any missing values", 'value':'drop_samples'},
@@ -176,13 +178,16 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                        marks = {n:str(n) for n in [1,20,40,60,80,100]},
                        updatemode='drag'),
         ]),
-        html.Button('Calculate tSNE', id='tsne_button')
+        html.Div([
+            html.Button('Calculate tSNE', id='tsne_button'),
+            #html.P("tSNE can be slow to run: will be recalculated only when you click the button")
+        ])
     ])
 
     default_nneighbors = 10
     default_mindist = 0.1
     umap_controls = html.Div(id='umap_controls',children=[
-        html.Div([
+        html.Div(id='umap_nneighbors_div',children=[
             html.Label("Num neighbors: {}".format(default_nneighbors),
                        id='umap_nneighbors_label',
                        style={'display':'inline-block'}),
@@ -191,7 +196,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                        marks = {n:str(n) for n in [1,20,40,60,80,100]},
                        updatemode='mouseup'),
         ]),
-        html.Div([
+        html.Div(id='umap_mindist_div',children=[
             html.Label("Min dist: {}".format(default_mindist),
                        id='umap_mindist_label',
                        style={'display':'inline-block'}),
@@ -242,7 +247,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                         ]),
                     #  plot_type_selector
                     html.Ul(id='tabs',className="nav nav-tabs",children=[
-                        define_tab_li(id="upload_tab", target="upload_panel", text="Upload", active=True),
+                        define_tab_li(id="upload_tab", target="upload_panel", text="Manage data", active=True),
                         define_tab_li(id="pca_tab", target="pca_panel", text="PCA"),
                         define_tab_li(id="mds_tab", target="mds_panel", text="MDS"),
                         define_tab_li(id="umap_tab", target="umap_panel", text="UMAP"),
@@ -252,8 +257,8 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
                 html.Div(id='sidebar',children=[
                     #fieldinfo_div,
-                    general_plot_options,
                     colour_selector,
+                    general_plot_options,
                     html.Div(id='lower_padding')
                 ]),
 
