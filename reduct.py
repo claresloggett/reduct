@@ -582,9 +582,11 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
         When PCA has been updated, re-generate the lists of available axes.
         """
         print("Callback: Updating PCA axes dropdowns")
+
         if timestamp is None:
             print("Skipping")
-            raise PreventUpdate()()
+            raise PreventUpdate()
+
         transformed, _c, _of, variance_ratios = get_pca_data(
             session_id, timestamp, scale, selected_fields,
             missing_data_method, numeric_fill, categorical_fill)
