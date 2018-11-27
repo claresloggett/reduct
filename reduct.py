@@ -216,6 +216,15 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                            **{'data-toggle': 'tab'})
                     ])
 
+    upload_component = html.Div(id='upload_box', children=[
+        dcc.Upload(id='upload_data',
+        children=html.Div([
+            'Drag and Drop or ',
+            html.A('Select File')
+        ]),
+        multiple=False
+    )])
+
     # *** Top-level app layout ***
 
     def serve_layout():
@@ -250,14 +259,10 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
                 html.Div(id='main_content',className='tab-content',children=[
                     html.Div(id='upload_panel', className='tab-pane active', children=[
-                        html.Div(id='upload_box', children=[
-                            dcc.Upload(id='upload_data',
-                            children=html.Div([
-                                'Drag and Drop or ',
-                                html.A('Select File')
-                            ]),
-                            multiple=False
-                        )])
+                        upload_component,
+                        dcc.Markdown(
+                            id='data_info', className="info_box",
+                            children='No data uploaded yet')
                     ]),
                     html.Div(id='pca_panel', className='tab-pane', children=[
                         #data_info(),
@@ -283,6 +288,19 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
             ])
 
     app.layout = serve_layout
+
+    # Build controls list dynamically, based on available selectors at launch
+    main_input_components = [Input('scale_selector','value'),
+                             Input('missing_data_selector','value'),
+                             Input('missing_numeric_fill','value'),
+                             Input('missing_categorical_fill','value')]
+    main_input_components_state = [State('scale_selector','value'),
+                                   State('missing_data_selector','value'),
+                                   State('missing_numeric_fill','value'),
+                                   State('missing_categorical_fill','value')]
+    # Currently no field_selector_table
+    main_input_components.append(Input('dummy_input','children'))
+    main_input_components_state.append(State('dummy_input','children'))
 
 
     def write_dataframe(filename, df):
@@ -370,6 +388,36 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                     ['data','sampleinfo','sampleinfotypes','fieldinfo']):
                 write_dataframe(session_id+'_'+suffix, df)
             return last_modified
+
+    # Last file uploaded: myfile.tsv
+    # 30 row, 13 columns (9 data, 3 metadata, 1 ID)
+    # After missing data filtering: 30 rows, 8 data columns
+
+    @app.callback(
+        Output('data_info','children'),
+        [Input('filecache_timestamp','children')],
+        [State('session_id', 'children'),
+         State('upload_data','filename')]
+         + main_input_components_state)
+    def display_data_info(timestamp, session_id, filename, scale,
+            missing_data_method, numeric_fill, categorical_fill, selected_fields):
+        print("Callback: display data info")
+        if timestamp is None:
+            return "No data uploaded"
+        else:
+            raw_data = read_dataframe(session_id+'_data', timestamp)
+            sample_info = read_dataframe(session_id+'_sampleinfo', timestamp)
+            completed_data = get_completed_data(session_id, timestamp,
+                selected_fields, missing_data_method, numeric_fill, categorical_fill)
+            rawrows, rawcols = raw_data.shape
+            filteredrows, filteredcols = completed_data.shape
+            metadatacols = sample_info.shape[1]-1
+            return "\n\n".join((
+                "Last file uploaded: {}".format(filename),
+                "{} rows, {} columns ({} data, {} metadata)".format(
+                    rawrows, rawcols+metadatacols, rawcols, metadatacols),
+                "After missing data handling: {} rows, {} data columns".format(
+                    filteredrows, filteredcols)))
 
 
     @cache.memoize()
@@ -494,21 +542,6 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
             n_neighbors=n_neighbors, min_dist=min_dist)
 
         return transformed
-
-
-    # Build controls list dynamically, based on available selectors at launch
-    main_input_components = [Input('scale_selector','value'),
-                             Input('missing_data_selector','value'),
-                             Input('missing_numeric_fill','value'),
-                             Input('missing_categorical_fill','value')]
-    main_input_components_state = [State('scale_selector','value'),
-                                   State('missing_data_selector','value'),
-                                   State('missing_numeric_fill','value'),
-                                   State('missing_categorical_fill','value')]
-    # Currently no field_selector_table
-    main_input_components.append(Input('dummy_input','children'))
-    main_input_components_state.append(State('dummy_input','children'))
-
 
     @app.callback(
         Output('tsne_perplexity_label', 'children'),
