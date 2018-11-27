@@ -266,7 +266,7 @@ def tsne_transform(data, field_info,
 # TODO: do we need the option of multiple runs, like tSNE?
 # TODO: might want to allow supervised mode using sample info
 def umap_transform(data, field_info,
-                   n_neighbors=10, min_dist=0.1):
+                   pca_dims=50, n_neighbors=10, min_dist=0.1):
     """
     Apply UMAP to the data. There must be no missing values.
     Any preprocessing (scaling etc) should already have been carried out.
@@ -290,11 +290,19 @@ def umap_transform(data, field_info,
 
     For now, metric cannot be set - we use the default value.
     """
+    if pca_dims is not None and pca_dims < data.shape[1] and pca_dims < data.shape[0]:
+        print("Carrying out PCA prior to UMAP: {} -> {}".format(data.shape[1],
+                                                                pca_dims))
+        pca = PCA(pca_dims)
+        compressed = pca.fit_transform(data.values)
+    else:
+        compressed = data.values
+
     print("Performing UMAP")
 
     # default n_components is 2
     umapr = UMAP(n_neighbors=n_neighbors, min_dist=min_dist)
-    transformed = pd.DataFrame(umapr.fit_transform(data.values),
+    transformed = pd.DataFrame(umapr.fit_transform(compressed),
                                index=data.index)
     transformed.columns = ['UMAP dim A','UMAP dim B']
 

@@ -891,7 +891,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                     traces.append(go.Scatter(x=transformed.loc[rows,x_field],
                                              y=transformed.loc[rows,y_field],
                                   mode='markers', marker=dict(size=10, opacity=0.7),
-                                  name=value, text=hover_text[rows]))
+                                  name=str(value), text=hover_text[rows]))
 
         figure = {
             'data': traces,
@@ -935,7 +935,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
         original_fieldlist = list(set(original_fields.values()))
         pcx_original = pd.Series(0, index=original_fieldlist,
-                                    name=pcx.name+'_originalfields')
+                                    name=str(pcx.name)+'_originalfields')
 
         # Calculate total contribution from each original non-encoded field
         # TODO: Is there a faster way?
