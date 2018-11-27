@@ -14,6 +14,7 @@ dependencies:
  - dash-core-components=0.38.0
  - dash-html-components=0.13.2
  - redis-py
+ - gunicorn
  - pip:
    - dash-table-experiments
    - flask-caching
