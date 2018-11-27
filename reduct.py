@@ -793,7 +793,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
         # Show sample ID on hover
         hover_text = transformed.index
-        if hover_sampleinfo:
+        if hover_sampleinfo and sample_info_used.shape[1]>0:
             # Show sample info fields on hover
             hover_text = hover_text.str.cat([sample_info_used[field].apply(lambda v:"{}={}".format(field,v))
                                              for field in sample_info_used.columns],
