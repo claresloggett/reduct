@@ -97,6 +97,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
 
     general_plot_options = html.Div(id='general_plot_options',children=[
+        html.H4('Data Handling'),
         html.Label('Scale numeric fields', id='numericfields'),
         dcc.RadioItems(
             id='scale_selector',
@@ -105,8 +106,9 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
             value=False  # TODO: set default to True if any categorical fields?
         ),
 
+        html.H4('Missing Data'),
         html.Div(id='missing_data', children=[
-            html.Label("Missing data:"),
+            #html.Label("Missing data:"),
             dcc.RadioItems(id='missing_data_selector',
                 options=[{'label':"Drop fields with any missing values", 'value':'drop_fields'},
                          {'label':"Drop samples with any missing values", 'value':'drop_samples'},
@@ -176,13 +178,16 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                        marks = {n:str(n) for n in [1,20,40,60,80,100]},
                        updatemode='drag'),
         ]),
-        html.Button('Calculate tSNE', id='tsne_button')
+        html.Div([
+            html.Button('Calculate tSNE', id='tsne_button'),
+            #html.P("tSNE can be slow to run: will be recalculated only when you click the button")
+        ])
     ])
 
     default_nneighbors = 10
     default_mindist = 0.1
     umap_controls = html.Div(id='umap_controls',children=[
-        html.Div([
+        html.Div(id='umap_nneighbors_div',children=[
             html.Label("Num neighbors: {}".format(default_nneighbors),
                        id='umap_nneighbors_label',
                        style={'display':'inline-block'}),
@@ -191,7 +196,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                        marks = {n:str(n) for n in [1,20,40,60,80,100]},
                        updatemode='mouseup'),
         ]),
-        html.Div([
+        html.Div(id='umap_mindist_div',children=[
             html.Label("Min dist: {}".format(default_mindist),
                        id='umap_mindist_label',
                        style={'display':'inline-block'}),
@@ -216,6 +221,15 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                            **{'data-toggle': 'tab'})
                     ])
 
+    upload_component = html.Div(id='upload_box', children=[
+        dcc.Upload(id='upload_data',
+        children=html.Div([
+            'Drag and Drop or ',
+            html.A('Select File')
+        ]),
+        multiple=False
+    )])
+
     # *** Top-level app layout ***
 
     def serve_layout():
@@ -233,7 +247,7 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                         ]),
                     #  plot_type_selector
                     html.Ul(id='tabs',className="nav nav-tabs",children=[
-                        define_tab_li(id="upload_tab", target="upload_panel", text="Upload", active=True),
+                        define_tab_li(id="upload_tab", target="upload_panel", text="Manage data", active=True),
                         define_tab_li(id="pca_tab", target="pca_panel", text="PCA"),
                         define_tab_li(id="mds_tab", target="mds_panel", text="MDS"),
                         define_tab_li(id="umap_tab", target="umap_panel", text="UMAP"),
@@ -243,21 +257,17 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
                 html.Div(id='sidebar',children=[
                     #fieldinfo_div,
-                    general_plot_options,
                     colour_selector,
+                    general_plot_options,
                     html.Div(id='lower_padding')
                 ]),
 
                 html.Div(id='main_content',className='tab-content',children=[
                     html.Div(id='upload_panel', className='tab-pane active', children=[
-                        html.Div(id='upload_box', children=[
-                            dcc.Upload(id='upload_data',
-                            children=html.Div([
-                                'Drag and Drop or ',
-                                html.A('Select File')
-                            ]),
-                            multiple=False
-                        )])
+                        upload_component,
+                        dcc.Markdown(
+                            id='data_info', className="info_box",
+                            children='No data uploaded yet')
                     ]),
                     html.Div(id='pca_panel', className='tab-pane', children=[
                         #data_info(),
@@ -283,6 +293,19 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
             ])
 
     app.layout = serve_layout
+
+    # Build controls list dynamically, based on available selectors at launch
+    main_input_components = [Input('scale_selector','value'),
+                             Input('missing_data_selector','value'),
+                             Input('missing_numeric_fill','value'),
+                             Input('missing_categorical_fill','value')]
+    main_input_components_state = [State('scale_selector','value'),
+                                   State('missing_data_selector','value'),
+                                   State('missing_numeric_fill','value'),
+                                   State('missing_categorical_fill','value')]
+    # Currently no field_selector_table
+    main_input_components.append(Input('dummy_input','children'))
+    main_input_components_state.append(State('dummy_input','children'))
 
 
     def write_dataframe(filename, df):
@@ -370,6 +393,36 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
                     ['data','sampleinfo','sampleinfotypes','fieldinfo']):
                 write_dataframe(session_id+'_'+suffix, df)
             return last_modified
+
+    # Last file uploaded: myfile.tsv
+    # 30 row, 13 columns (9 data, 3 metadata, 1 ID)
+    # After missing data filtering: 30 rows, 8 data columns
+
+    @app.callback(
+        Output('data_info','children'),
+        [Input('filecache_timestamp','children')],
+        [State('session_id', 'children'),
+         State('upload_data','filename')]
+         + main_input_components_state)
+    def display_data_info(timestamp, session_id, filename, scale,
+            missing_data_method, numeric_fill, categorical_fill, selected_fields):
+        print("Callback: display data info")
+        if timestamp is None:
+            return "No data uploaded"
+        else:
+            raw_data = read_dataframe(session_id+'_data', timestamp)
+            sample_info = read_dataframe(session_id+'_sampleinfo', timestamp)
+            completed_data = get_completed_data(session_id, timestamp,
+                selected_fields, missing_data_method, numeric_fill, categorical_fill)
+            rawrows, rawcols = raw_data.shape
+            filteredrows, filteredcols = completed_data.shape
+            metadatacols = sample_info.shape[1]-1
+            return "\n\n".join((
+                "Last file uploaded: {}".format(filename),
+                "{} rows, {} columns ({} data, {} metadata)".format(
+                    rawrows, rawcols+metadatacols, rawcols, metadatacols),
+                "After missing data handling: {} rows, {} data columns".format(
+                    filteredrows, filteredcols)))
 
 
     @cache.memoize()
@@ -495,21 +548,6 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
 
         return transformed
 
-
-    # Build controls list dynamically, based on available selectors at launch
-    main_input_components = [Input('scale_selector','value'),
-                             Input('missing_data_selector','value'),
-                             Input('missing_numeric_fill','value'),
-                             Input('missing_categorical_fill','value')]
-    main_input_components_state = [State('scale_selector','value'),
-                                   State('missing_data_selector','value'),
-                                   State('missing_numeric_fill','value'),
-                                   State('missing_categorical_fill','value')]
-    # Currently no field_selector_table
-    main_input_components.append(Input('dummy_input','children'))
-    main_input_components_state.append(State('dummy_input','children'))
-
-
     @app.callback(
         Output('tsne_perplexity_label', 'children'),
         [Input('tsne_perplexity_slider', 'value')]
@@ -582,9 +620,11 @@ def create_app(cachetype, cachesize, num_pcs, hover_sampleinfo, hover_data, colo
         When PCA has been updated, re-generate the lists of available axes.
         """
         print("Callback: Updating PCA axes dropdowns")
+
         if timestamp is None:
             print("Skipping")
-            raise PreventUpdate()()
+            raise PreventUpdate()
+
         transformed, _c, _of, variance_ratios = get_pca_data(
             session_id, timestamp, scale, selected_fields,
             missing_data_method, numeric_fill, categorical_fill)
