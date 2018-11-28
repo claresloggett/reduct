@@ -9,11 +9,11 @@ In experimental development.
 
 To install, create an environment and `pip install -r requirements.txt`
 
-For latest versions of packages, follow Dash installation instructions at https://plot.ly/dash/getting-started. These default versions of Dash currently won't work with reduct as we are using features from a release candidate.
+There is alternatively a conda environment available with versions pinned, for use in development: `environment-dev.yml`.
 
-The simplest usage is to launch reduct with the CSV file you want to visualise, like so:
+The simplest usage is to launch reduct on the command line like so:
 
-```python reduct.py datafile.csv```
+```python reduct.py```
 
 and point your browser to `127.0.0.1:8050`.
 
