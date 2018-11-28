@@ -7,7 +7,7 @@ Uses Plotly Dash.
 
 In experimental development.
 
-To install, create an environment and `pip install -r requirements.txt`
+To install after cloning this repository, create an environment and `pip install -r requirements.txt`
 
 There is alternatively a conda environment available with versions pinned, for use in development: `environment-dev.yml`.
 
